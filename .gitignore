@@ -12,5 +12,13 @@ analysis.json
 # 打包产物
 *.zip
 
+# 自检产物
+_selfcheck/
+*.mp4
+contact_sheet.png
+
+# 社区取样（体积大，只做本地学习）
+samples/
+
 # 系统
 .DS_Store

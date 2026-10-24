@@ -112,10 +112,14 @@
 |---|---|
 | 音乐分析 | `tools/analyze_music.py`（librosa） |
 | 音源分离 | `demucs --two-stems=vocals song.mp3 -o stems/` |
+| 歌词时间轴 | `tools/lyrics_align.py`（LRC/SRT → beat） / `faster-whisper`（`word_timestamps=True`） |
 | 谱面生成 | `tools/chart_builder.py` |
 | 谱面校验 | `tools/validate_chart.py` |
+| 一键自检 | `tools/selfcheck.sh`（结构 + 指标 + 联系表） |
+| 离屏预览 | `tools/preview_render.py`（单帧 / 联系表 / 视频 / stats） |
+| 社区取样 | `tools/phira_community.py`（搜索 / 详情 / 下载 / top） |
 | 打包 | `tools/package_chart.sh` |
-| 可视化验证 | Phira 客户端 / phira-render / prpr / PhiZone player / Re:PhiEdit |
+| 像素级渲染 | phichain-renderer / prpr-render / phira-render / Phira 客户端 |
 | 类型溯源 | `TeamFlos/phira` 源码里的 serde 结构体 |
 
 ---
@@ -181,3 +185,20 @@ struct RPEEventLayer { /* 5 个事件数组 */ }
 3. 拿一张已成功导入的真实谱，grep 该字段的实际写法
 4. 两者一致 → 写进 docs；不一致 → 以源码 + 实机为准，记录到 PITFALLS
 ```
+
+---
+
+## 八、社区谱面接口（学习用）
+
+| 用途 | 地址 |
+|---|---|
+| 搜索 / 列表 | `https://api.phira.cn/chart?page=1&search=<关键词>&sort=rating&tag=<标签>` |
+| 单谱详情 | `https://api.phira.cn/chart/<id>` |
+| 文件托管 | `https://phira.5wyxi.com/files/<uuid>`（下载即 zip） |
+
+- `sort=rating` → 好评度降序；不传 → 最新
+- 详情里的 `file` 字段就是 zip 直链，解压得到 `chart.json` + 音频 + 曲绘 + `info.yml`
+- 公开只读接口，无需登录。**低频访问**，别给社区服务器添麻烦
+
+封装好的命令行见 [`tools/phira_community.py`](../../tools/phira_community.py)，
+学习方法见 [`docs/04-reference/03-community-sampling.md`](../04-reference/03-community-sampling.md)。

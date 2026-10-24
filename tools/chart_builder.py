@@ -47,6 +47,8 @@ __all__ = [
 ]
 
 MAX_DEN = 64  # 最大细分分母（1/64 拍）
+# 常用音乐网格：吸附到这个集合，避免出现 53/57 这种"算得准但没法看"的分母
+MUSICAL_DENS = (1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64)
 
 
 # --------------------------------------------------------------------------
@@ -89,7 +91,19 @@ def _bt_from_number(value: Any) -> List[int]:
     if isinstance(value, (list, tuple)):
         return bt(*value)
     f = Fraction(value if isinstance(value, (int, Fraction)) else float(value))
-    f = f.limit_denominator(MAX_DEN)
+    # 先尝试精确/有界表示，再吸附到常用音乐网格（1/2 1/3 1/4 ... 1/64）
+    # 注意：不在网格上的分母（如 57、61）一律不采用——那只是"算得准"，并不好读
+    approx = f.limit_denominator(MAX_DEN)
+    if approx.denominator in MUSICAL_DENS:
+        f = approx
+    else:
+        best, best_err = None, None
+        for d in MUSICAL_DENS:
+            cand = Fraction(round(f * d), d)
+            err = abs(f - cand)
+            if best is None or err < best_err - 1e-12:
+                best, best_err = cand, err
+        f = best
     w = int(f)
     n = f.numerator - w * f.denominator
     d = f.denominator

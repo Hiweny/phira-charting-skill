@@ -1,21 +1,36 @@
 # 01 · 自检流程（做完谱后必走）
 
 > 目的：**在任何工具打开之前，就知道自己做出来的是什么谱。**
-> 不要靠"导入试试"碰运气。
+> 不要靠"导入试试"碰运气——**用户不是你的测试员。**
 
 ---
 
-## 0. 四级验证
+## 0. 一条命令
+
+```bash
+bash tools/selfcheck.sh my-chart
+```
+
+它按顺序跑 L1 → L2 → L2.5，产出 `_selfcheck/my-chart/`：
+`validate.txt` / `stats.json` / `contact_sheet.png` / `summary.md`。
+
+详细用法与视觉分析方法见 [`02-visual-selfcheck.md`](02-visual-selfcheck.md)。
+
+---
+
+## 0.1 五级验证
 
 ```
 L0 生成期    → chart_builder 保证字段合法
 L1 静态      → validate_chart.py 结构与语义检查
-L2 量化      → --report 输出曲线/分布，人工判定设计是否达标
-L3 实机      → Phira 导入 → 加载 → 试玩 → 观感
-L4 交叉      → 用另一个渲染器（phira-render / prpr）复核
+L2 量化      → --stats 输出曲线/分布，人工判定设计是否达标
+L2.5 视觉    → preview_render.py 联系表 / 单帧 / 视频（自己看画面）
+L3 实机      → Phira 导入 → 加载 → 试玩 → 观感（最后一步，不是第一步）
+L4 交叉      → 用另一个渲染器（phichain-renderer / prpr-render）复核像素与特效
 ```
 
-**L1 不过，不要往下走。L3 没玩过，不要交付。**
+**L1 不过，不要往下走。L2.5 没看过，不要交付。**
+L3 是最后一道保险，而不是你的主要验证手段。
 
 ---
 
@@ -30,7 +45,7 @@ python3 tools/validate_chart.py my-chart
 | 类别 | 检查项 |
 |---|---|
 | 文件 | info.yml / chart.json / 音乐 / 曲绘 是否存在；zip 是否扁平 |
-| YAML | 必需字段、类型（id/uploader 是 int） |
+| YAML | 必需字段、类型（`id`/`uploader` 是 int 或 null） |
 | JSON | 单对象、可解析、顶层 7 字段 |
 | 时间 | 三元组全整数、分母合法、end ≥ start |
 | 音符 | 11 字段齐全、类型 1~4、positionX int、时间越界 |
@@ -84,7 +99,10 @@ Effects       : 5 (vignette, chromatic, shockwave×2, glitch)
 
 ---
 
-## 3. L3 实机验证（Phira 本体验证，最权威）
+## 3. L3 实机验证（最后一道保险）
+
+> 先做 L2.5（联系表 + 视频）。**只有 L2.5 全过了，才值得开 Phira。**
+> 没有 Phira 环境时，用 [`02-visual-selfcheck.md`](02-visual-selfcheck.md) 的渲染器替代，**不要直接把 zip 丢给用户去试**。
 
 1. 打包：`bash tools/package_chart.sh my-chart`
 2. Phira → 本地谱面 → 导入 zip
@@ -131,7 +149,7 @@ Effects       : 5 (vignette, chromatic, shockwave×2, glitch)
 
 ```
 □ 1. 目录扁平，info.yml 在根
-□ 2. info.yml: id/uploader 是整数；字符串带引号；无 Tab
+□ 2. info.yml: id/uploader 是整数或 null；字符串带引号；无 Tab
 □ 3. chart.json 能 json.load
 □ 4. 顶层 7 字段齐全
 □ 5. BPMList 每项有 bpm(float) + startTime(3 int)
@@ -169,14 +187,16 @@ X 覆盖：-520 ~ 520
 
 ---
 
-## 7. 自动化（CI 思路）
-
-可把 L1 做成 pre-commit：
+## 7. 自动化
 
 ```bash
-# .git/hooks/pre-commit
+# pre-commit：L1 结构门禁
 python3 tools/validate_chart.py examples/minimal || exit 1
+
+# 或一次性 L1 + L2 + L2.5
+bash tools/selfcheck.sh my-chart
 ```
 
-L3 无法自动化（需要 Phira 客户端）。替代方案：
-用 `phira-render` 的 CLI 渲染首 10 秒截图，人工比对。
+L3 需要 Phira 客户端，无法完全自动化。但它已经不该是主要验证手段：
+`preview_render.py --video` 出的关键段视频，已经足够你判断 90% 的问题。
+需要像素级复核时，用 phichain-renderer / prpr-render（见 `02-visual-selfcheck.md`）。
