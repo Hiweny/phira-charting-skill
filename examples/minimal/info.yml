@@ -1,0 +1,29 @@
+id: 90001
+uploader: 1233
+name: Minimal Demo
+difficulty: 1.0
+level: IN 1
+charter: Maid
+composer: Unknown
+illustrator: Maid
+chart: chart.json
+format: null
+music: song.wav
+illustration: illustration.png
+unlockVideo: null
+previewStart: 0.0
+previewEnd: null
+aspectRatio: 1.0
+backgroundDim: 0.6
+lineLength: 6.0
+offset: 0.0
+tip: Replace song.wav / illustration.png
+tags:
+- Demo
+- Template
+intro: Minimal importable chart.
+holdPartialCover: false
+noteUniformScale: false
+forceAspectRatio: false
+useRpe170Speed: null
+useAttachUiFix: true

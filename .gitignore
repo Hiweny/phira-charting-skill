@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.Python
+.venv/
+venv/
+
+# 音频分析产物
+analysis.json
+*.log
+
+# 打包产物
+*.zip
+
+# 系统
+.DS_Store
