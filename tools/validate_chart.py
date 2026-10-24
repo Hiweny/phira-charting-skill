@@ -268,10 +268,11 @@ def check_info(info: Optional[dict]) -> None:
         if k not in info:
             ERRORS.append(f"info.yml 缺少必需字段：{k}")
 
-    if "id" in info and not is_int(info["id"]):
-        ERRORS.append(f"info.yml id 必须是整数，得到 {info['id']!r}")
-    if "uploader" in info and not is_int(info["uploader"]):
-        ERRORS.append(f"info.yml uploader 必须是整数，得到 {info['uploader']!r}")
+    # 社区下载的谱面常见 id: null / uploader: null（未上传），这是合法的
+    if info.get("id") is not None and not is_int(info["id"]):
+        ERRORS.append(f"info.yml id 必须是整数或 null，得到 {info['id']!r}")
+    if info.get("uploader") is not None and not is_int(info["uploader"]):
+        ERRORS.append(f"info.yml uploader 必须是整数或 null，得到 {info['uploader']!r}")
     if "difficulty" in info and not is_number(info["difficulty"]):
         ERRORS.append("info.yml difficulty 必须是数字")
     for k in ("offset", "previewStart", "aspectRatio", "backgroundDim", "lineLength"):

@@ -210,6 +210,13 @@ Phira 同时接受：
 | 特效加了比不加还难看 | 全局特效长时间堆叠 | 单段 ≤2 个特效，参数默认 0，只在拍点推峰值 |
 | 越到后面越偏 | `BPMList` 漏变速点 | 补齐所有 BPM 段 |
 | 判定全 Miss / 音符一闪而过 | `visibleTime` 太小（有人误写成 0.5） | 常规 `999999.0` |
+| 多层 alpha 叠出"全黑"或"过曝" | `eventLayers` 是**叠加**语义（对应 prpr 的 `AnimFloat::chain`），不是相乘 | 每层只写自己负责的通道；占位层不要写 `alphaEvents: [{start:0,end:0}]` 这种归零事件 |
+| 判定线位置莫名其妙 +1px / alpha 变成 1 | `posControl` 里出现 `x: 9999999` 的"未设置"哨兵值 | 只有 `[{pos:1.0, x:9999999}]` 这种单点值是哨兵，要**跳过**，回落到默认值 |
+| 自己写的渲染器把 Tap 画成"永远不消失" | 把 `endTime` 当真了 —— 很多谱给 Tap 写了很远的占位 `endTime` | Tap/Flick/Drag 的可见窗口用 `time + 0.06s`，只有 Hold 用 `endTime` |
+| 下落速度怎么调都没反应 | 忘了 `speedEvents` 默认值是 **10**（RPE 编辑器默认），`1.0` 是"很慢"不是"标准" | 演奏线显式写 `speedEvents`，常规 8~12 |
+
+> `SPEED_RATIO = 10 / 45 / 0.83175 ≈ 0.2671`（来自 `prpr`），
+> 所以"每 1 原始速度 = 每拍前进约 0.267 个屏幕半高"。
 
 ---
 
@@ -238,7 +245,7 @@ Phira 同时接受：
 
 | 位置 | 字段 | 类型 |
 |---|---|---|
-| info.yml | `id` / `uploader` | **int** |
+| info.yml | `id` / `uploader` | **int（社区下载的谱常为 null，合法）** |
 | info.yml | `difficulty` / `offset` / `previewStart` | float |
 | info.yml | `tags` | list[string] |
 | chart.json | `META.id` / `META.level` / `META.name` | **string** |

@@ -115,5 +115,18 @@
 
 ## 6. 完整可运行示例
 
-见 [`examples/case-dangerous/extra.json`](../../examples/case-dangerous/extra.json)
-（5 个效果：Stage Vignette / Danger Chromatic / Beat Shockwave / Peak Shockwave / Bridge Glitch）。
+用 `chart_builder` 生成一个合法的 extra.json：
+
+```python
+from chart_builder import Chart, bt
+
+c = Chart(bpm=140.0, song="song.mp3", name="曲名", charter="谱师名", level="IN 14", difficulty=14.0)
+c.add_effect("shockwave", bt(60, 0), bt(61, 0), vars={"power": 0.8})
+c.save_extra("extra.json")
+```
+
+> `save_extra()` 在没有任何 effect 时**不会创建文件**（返回 `None`）——这是正确的：
+> 不需要特效的谱就不该带 extra.json。
+
+更复杂的五段式配置见 [`docs/03-workflow/04-effects.md`](../03-workflow/04-effects.md) 的分层表
+（Stage Vignette / Danger Chromatic / Beat Shockwave / Peak Shockwave / Bridge Glitch）。
