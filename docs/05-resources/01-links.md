@@ -130,3 +130,54 @@
 | D | 第三方项目 / 教程 | 中（需交叉验证） |
 
 > 写进本仓库的结论，至少是 B/C 级。凡未验证的，文中已标注"需实机确认"。
+
+---
+
+## 七、源码导览（接手 Agent 必看）
+
+遇到"这个字段到底什么类型 / 这个值怎么换算"的问题，**读源码比猜快 100 倍**。
+
+### 7.1 Phira 主项目 `TeamFlos/phira`（Rust workspace）
+
+| 路径 | 内容 |
+|---|---|
+| `prpr/src/parse/rpe.rs` | ⭐ **RPE 格式解析的唯一真相**。所有 `RPE*` 结构体的 `Deserialize` 定义都在这里 |
+| `prpr/src/core/chart.rs` | 谱面运行时模型（`Chart` / `Line` / `Note` / `Triple`） |
+| `prpr/src/parse/mod.rs` | 格式分发（RPE / PEC / Phi 等） |
+
+关键常量（来自 `rpe.rs`）：
+
+```rust
+RPE_WIDTH  = 1350.0
+RPE_HEIGHT =  900.0
+SPEED_RATIO = 10.0 / 45.0 / HEIGHT_RATIO
+```
+
+关键结构：
+
+```rust
+struct RPEBpmItem { bpm: f64, start_time: Triple }
+struct RPEEventLayer { /* 5 个事件数组 */ }
+```
+
+> `Triple` 即 `[u32; 3]` —— 这就是"三元组三个元素必须是整数"的根源。
+> 反序列化失败时的报错（`expected u32` / `expected i32` / `invalid length 0`）
+> 全部来自 serde 对 `Triple` 与定长数组的校验。
+
+### 7.2 其他可对照源码
+
+| 项目 | 看点 |
+|---|---|
+| `TeamFlos/phira-render` | 前端渲染实现，可直接对照事件对视觉的影响 |
+| `Mivik/prpr` | 独立播放器，`parse/rpe.rs` 与 Phira 内嵌版本同源 |
+| `kclg-YSJ/rpe-next` | 编辑器实现，字段编辑逻辑可参考 |
+| `TeamZincs/Kipphi` | 解析库，字段模型比 Rust 版更易读 |
+
+### 7.3 推荐排查顺序
+
+```
+1. 报错原文里的字段名 → 全局搜 phira 源码（GitHub 搜索 / 本地 clone）
+2. 找到对应的 struct 定义与 #[serde(...)] 属性
+3. 拿一张已成功导入的真实谱，grep 该字段的实际写法
+4. 两者一致 → 写进 docs；不一致 → 以源码 + 实机为准，记录到 PITFALLS
+```
