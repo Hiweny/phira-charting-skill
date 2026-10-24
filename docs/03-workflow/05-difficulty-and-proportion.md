@@ -165,6 +165,10 @@ python3 tools/preview_render.py <工程> --stats
 `approach_dist_median` 太低 → note 几乎是"贴着线突然出现"，读不了；
 太高 → 下落太快，玩家来不及反应。
 
+> **画面里同时可见的 note 数量 ≈ NPS × 单 note 可读时长。**
+> 想让画面"看起来很满"，两条路：加密度，或降速（让每个 note 在屏上待更久）。
+> 降速通常比加密度更安全——手感不变差，视觉先变丰富。
+
 **调整手段**：改 `speedEvents`（全曲下落速度）、改 `speed`（单音符）、
 改 `sizeControl`、改判定线位置让 note 提前进入视野。
 
