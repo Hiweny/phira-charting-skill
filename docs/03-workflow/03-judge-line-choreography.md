@@ -121,6 +121,34 @@ def damped_shake(line, start_beat, amp=5.0, k=0.35, step=1/8):
     line.movex(events)
 ```
 
+### 4.3 烘焙：把"连续动画"采样成关键帧
+
+花瓣飘落、粒子流、流光扫过——**别手 K，要烘焙。**
+
+```python
+from chart_builder import bake_curve
+
+# 16 fps 采样，观感已经连续，成本却低一个数量级
+for i in range(6):
+    x = bake_curve(lambda b, i=i: 120 * math.sin(b * 0.7 + i), 0, 64, bpm=95, fps=16)
+    y = bake_curve(lambda b, i=i: -260 + 8.5 * b, 0, 64, bpm=95, fps=16)
+    chart.add_line(f"petal{i}", clickable=False).movex(x).movey(y)
+```
+
+实测依据（《浮生梦 探窗》）：6 条 `blossom` 线各 1 060 个位移帧、
+时间跨度 200–261 s、帧间隔 0.25 s（16 fps），
+贡献了全谱 18 245 帧里的大半 —— 而它不是手 K 的，是采样的。
+
+| 采样率 | 观感 | 帧数（60 s） | 建议 |
+|---|---|---|---|
+| 8 fps | 略有跳帧 | 480 | 慢速飘落可接受 |
+| **16 fps** | 连贯 | 960 | **默认** |
+| 30 fps | 顺滑 | 1 800 | 高速流光 |
+| 60 fps | 无差别 | 3 600 | 浪费，别超过 |
+
+注意：`bake_curve` 的 `start/end` 单位是**拍**，`fps` 是**每秒**，
+两者靠 `bpm` 换算（`step = bpm/60/fps`），变速曲记得分段调用。
+
 ---
 
 ## 5. 父子线（father）

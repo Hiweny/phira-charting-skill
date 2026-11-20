@@ -32,7 +32,7 @@ import json
 import math
 import os
 from fractions import Fraction
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 __all__ = [
     "bt",
@@ -43,6 +43,7 @@ __all__ = [
     "Chart",
     "oscillation_events",
     "damped_shake_events",
+    "bake_curve",
     "parse_bt",
 ]
 
@@ -262,6 +263,28 @@ def damped_shake_events(start: float, amp: float = 5.0, k: float = 0.35,
         b += step
         i += 1
     out.append((bt(b), 0.0))
+    return out
+
+
+def bake_curve(fn: Callable[[float], float], start: float, end: float,
+               bpm: float = 120.0, fps: float = 16.0) -> List[Tuple[Any, float]]:
+    """把函数式动画烘焙成关键帧：返回 [(bt, value), ...]。
+
+    用途：花瓣飘落、粒子流、流光扫过——这些"看起来连续"的运动没必要手 K，
+    按 16 fps 采样后观感已经连贯，成本却低一个数量级。
+
+        petals = bake_curve(lambda b: 40 * math.sin(b * 0.8), 0, 64, bpm=95, fps=16)
+        line.movex(petals)
+    """
+    if fps <= 0:
+        raise ValueError("fps 必须大于 0")
+    step = bpm / 60.0 / fps          # 每帧占多少拍
+    out: List[Tuple[Any, float]] = []
+    b = start
+    n = int(math.floor((end - start) / step)) + 1
+    for i in range(n):
+        b = start + i * step
+        out.append((bt(b), fn(b)))
     return out
 
 

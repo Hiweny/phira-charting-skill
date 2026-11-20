@@ -215,10 +215,10 @@ bash tools/selfcheck.sh samples/tanchuang samples/tanchuang/_qc
 |---|---|
 | `tools/analyze_music.py` | BPM / 节拍 / onset / 能量 / 结构 / 人声区段 |
 | `tools/lyrics_align.py` | 歌词（LRC/SRT）→ beat 落点表 + 建议 note 数 |
-| `tools/chart_builder.py` | 谱面构建库（`bt` / `note` / `line` / 事件封装） |
+| `tools/chart_builder.py` | 谱面构建库（`bt` / `note` / `line` / 事件封装 / `bake_curve` 烘焙） |
 | `tools/validate_chart.py` | 结构与语义校验（导入前必跑） |
 | `tools/preview_render.py` | 离屏渲染：单帧 / 联系表 / 视频 / 量化指标（支持图片判定线） |
 | `tools/selfcheck.sh` | 一键自检（L1 + L2 + L2.5 + summary） |
-| `tools/chart_stats.py` | 横向基准体检：线数/贴图/帧密度/帧每音符/NPS/类型配比 |
+| `tools/chart_stats.py` | 横向基准体检：线数/贴图/帧密度/帧每音符/NPS/类型配比（`--timeline` 看时间分布） |
 | `tools/phira_community.py` | 社区谱面搜索 / 下载 / 批量取样 |
 | `tools/package_chart.sh` | 打包成可导入的 zip |
