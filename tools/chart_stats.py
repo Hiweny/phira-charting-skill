@@ -45,6 +45,34 @@ def count_events(events) -> int:
     return sum(1 for e in events if isinstance(e, dict))
 
 
+def bpm_segments(data: dict) -> list[tuple[float, float]]:
+    """读取 BPM 分段：RPE 用 `BPMList`，少数谱用 `bpmList`。返回 [(起始拍, bpm)]。"""
+    lst = data.get("BPMList") or data.get("bpmList") or []
+    segs: list[tuple[float, float]] = []
+    for it in lst:
+        if not isinstance(it, dict):
+            continue
+        st = it.get("startTime") or [0, 0, 1]
+        beat = st[0] + st[1] / (st[2] if len(st) > 2 and st[2] else 1)
+        segs.append((float(beat), float(it.get("bpm") or 120.0)))
+    segs.sort()
+    return segs or [(0.0, 120.0)]
+
+
+def beat_to_sec(beat: float, segs: list[tuple[float, float]]) -> float:
+    """把拍号换算成秒。变速曲按分段累加，别用单一 BPM 硬除。"""
+    if beat <= segs[0][0]:
+        return (beat - segs[0][0]) * 60.0 / segs[0][1]
+    sec = 0.0
+    for i, (b, bpm) in enumerate(segs):
+        nxt = segs[i + 1][0] if i + 1 < len(segs) else float("inf")
+        if beat <= b:
+            break
+        span = min(beat, nxt) - b
+        sec += span * 60.0 / bpm
+    return sec
+
+
 def analyze(path: str) -> dict:
     chart_path = find_chart(path)
     with open(chart_path, encoding="utf-8-sig") as f:
@@ -110,7 +138,10 @@ def analyze(path: str) -> dict:
         speed_events += count_events(ln.get("speedEvents"))
 
     total_notes = sum(notes.values())
-    seconds = [b[0] + (b[1] / b[2] if len(b) > 2 and b[2] else 0) for b in all_t]
+    segs = bpm_segments(data)
+    # 关键：拍号 → 秒。直接拿 beat 当秒会让 NPS 和峰值翻倍
+    seconds = [beat_to_sec(b[0] + (b[1] / b[2] if len(b) > 2 and b[2] else 0), segs)
+               for b in all_t]
     dur = (max(seconds) - min(seconds)) if seconds else 0.0
     # 峰值 NPS：1 秒滑动窗口
     peak = 0
@@ -122,15 +153,26 @@ def analyze(path: str) -> dict:
                 j += 1
             peak = max(peak, i - j + 1)
 
-    # 音乐时长
+    # 音乐时长：优先 ffprobe（mutagen 对部分 mp3 会读出约 2 倍时长）
     audio = 0.0
     for f in os.listdir(os.path.dirname(chart_path) or "."):
         if f.lower().endswith((".ogg", ".mp3", ".wav")):
+            ap = os.path.join(os.path.dirname(chart_path), f)
             try:
-                from mutagen import File as MFile  # 可选依赖
-                audio = MFile(os.path.join(os.path.dirname(chart_path), f)).info.length
+                import subprocess
+                out = subprocess.run(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "csv=p=0", ap],
+                    capture_output=True, text=True, timeout=20).stdout.strip()
+                audio = float(out)
             except Exception:
                 audio = 0.0
+            if not audio:
+                try:
+                    from mutagen import File as MFile  # 兜底
+                    audio = MFile(ap).info.length
+                except Exception:
+                    audio = 0.0
             break
 
     off = data.get("offset", 0)
@@ -182,6 +224,7 @@ def timeline(path: str, step: float = 10.0) -> str:
     chart_path = find_chart(path)
     with open(chart_path, encoding="utf-8-sig") as f:
         data = json.load(f)
+    segs = bpm_segments(data)
     buckets: Counter = Counter()
     for ln in (data.get("judgeLineList") or []):
         for ly in (ln.get("eventLayers") or []):
@@ -194,7 +237,8 @@ def timeline(path: str, step: float = 10.0) -> str:
                     st = e.get("startTime") if isinstance(e, dict) else None
                     if not isinstance(st, list) or len(st) < 2:
                         continue
-                    t = st[0] + st[1] / (st[2] if len(st) > 2 and st[2] else 1)
+                    beat = st[0] + st[1] / (st[2] if len(st) > 2 and st[2] else 1)
+                    t = beat_to_sec(beat, segs)
                     buckets[int(t // step) * int(step)] += 1
     if not buckets:
         return "（无事件）"
