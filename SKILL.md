@@ -178,6 +178,8 @@ bash tools/selfcheck.sh samples/tanchuang samples/tanchuang/_qc
 ```
 
 **先看画面（联系表），再看结构（代码），最后对指标。** 只看代码学不会演出。
+四条线形态（普通/文字/光圈/贴图）与 shader 特效：
+[`docs/01-format/06-line-kinds-and-effects.md`](docs/01-format/06-line-kinds-and-effects.md)。
 已拆解案例：[《enchanted love》— 谱面即舞台剧](docs/04-reference/04-case-enchanted-love.md)
 （287 条图片判定线、101 张贴图、零 shader）、
 [《巴拉莱卡》— 零素材的几何演出](docs/04-reference/06-case-balalaika.md)
@@ -219,9 +221,9 @@ bash tools/selfcheck.sh samples/tanchuang samples/tanchuang/_qc
 |---|---|
 | `tools/analyze_music.py` | BPM / 节拍 / onset / 能量 / 结构 / 人声区段 |
 | `tools/lyrics_align.py` | 歌词（LRC/SRT）→ beat 落点表 + 建议 note 数 |
-| `tools/chart_builder.py` | 谱面构建库（`bt` / `note` / `line` / 事件封装 / `bake_curve` 烘焙） |
-| `tools/validate_chart.py` | 结构与语义校验（导入前必跑） |
-| `tools/preview_render.py` | 离屏渲染：单帧 / 联系表 / 视频 / 量化指标（支持图片判定线） |
+| `tools/chart_builder.py` | 谱面构建库（`bt` / `note` / `line` / 事件封装 / `bake_curve` 烘焙 / `typewriter` / `add_paint` 光圈 / `add_gif` / `add_effect` shader） |
+| `tools/validate_chart.py` | 结构与语义校验（导入前必跑；含文字/光圈/贴图线互斥检查） |
+| `tools/preview_render.py` | 离屏渲染：单帧 / 联系表 / 视频 / 量化指标（支持图片判定线、文字线、光圈线） |
 | `tools/selfcheck.sh` | 一键自检（L1 + L2 + L2.5 + summary） |
 | `tools/chart_stats.py` | 横向基准体检：RPE(JSON) + PEC；排除 `isFake`；`--timeline` 看时间分布 |
 | `tools/phira_community.py` | 社区谱面搜索 / 下载 / 批量取样 |

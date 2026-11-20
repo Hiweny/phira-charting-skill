@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
-from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 # ---------------------------------------------------------------- 常量
 
@@ -53,6 +53,8 @@ HALF_W, HALF_H = RPE_W / 2, RPE_H / 2
 # prpr 源码 prpr/src/parse/rpe.rs：const SPEED_RATIO = 10 / 45 / HEIGHT_RATIO
 HEIGHT_RATIO = 0.83175
 SPEED_RATIO = 10.0 / 45.0 / HEIGHT_RATIO   # ≈ 0.2671
+
+TEXT_PX = 26.0                     # 文字线字号（逻辑像素，prpr 固定不可调）
 
 NOTE_COLORS = {
     1: (96, 210, 255),     # Tap  青
@@ -441,6 +443,73 @@ def _ext_color(line: dict, t: float, timing: Timing) -> tuple[float, float, floa
     return tuple(pts[-1][1])
 
 
+# 文字线字体：优先 CJK，保证中日文不糊成方块
+FONT_CANDIDATES = (
+    "/usr/share/fonts/opentype/noto-cjk-otf/NotoSansCJKsc-Regular.otf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSerifCJKsc-Regular.otf",
+)
+_FONT_CACHE: dict = {}
+
+
+def _load_font(px: int):
+    if px in _FONT_CACHE:
+        return _FONT_CACHE[px]
+    font = None
+    for p in FONT_CANDIDATES:
+        if os.path.exists(p):
+            try:
+                font = ImageFont.truetype(p, px)
+                break
+            except Exception:  # noqa: BLE001
+                continue
+    if font is None:
+        try:
+            font = ImageFont.load_default(px)
+        except Exception:  # noqa: BLE001
+            font = None
+    _FONT_CACHE[px] = font
+    return font
+
+
+def _ext_text(line: dict, t: float, timing: Timing) -> str:
+    """textEvents 求值：字符串不插值，而是按进度"逐字显现"。
+
+    RPE/prpr 里 `start` 与 `end` 是同一段文本的两个状态：
+    `start: ""` → 打字机；`start == end` → 静态显示。
+    事件结束后保持最后一段文本（与其它通道的 hold 语义一致）。
+    """
+    ev = (line.get("extended") or {}).get("textEvents")
+    if not ev:
+        return ""
+    cur = ""
+    for e in sorted(ev, key=lambda x: tri(x.get("startTime"))):
+        try:
+            b0 = tri(e.get("startTime"))
+            b1 = tri(e.get("endTime"))
+        except (KeyError, TypeError, ValueError):
+            continue
+        s = str(e.get("start") or "")
+        d = str(e.get("end") or "")
+        beat = timing.beat_at(t)
+        if beat < b0:
+            break
+        if b1 <= b0 or beat >= b1:
+            cur = d
+            continue
+        p = (beat - b0) / (b1 - b0)
+        if s == d:
+            cur = d
+        elif not s:                      # 打字机
+            n = int(round(p * len(d)))
+            cur = d[:n]
+        else:                            # 有初值：按目标长度逐字覆盖
+            n = int(round(p * len(d)))
+            cur = d[:n] or s
+    return cur
+
+
 class SpeedField:
     """把 speedEvents 积分成"下落高度场" H(t)。
 
@@ -600,6 +669,46 @@ class Renderer:
             self._tex_scaled[key] = out
         return out
 
+    def draw_paint(self, img: Image.Image, L: dict, st, t: float) -> bool:
+        """Paint 线：整屏被一个圆形填满/收束（iris 转场），无需贴图。
+
+        `paintEvents` 的值是**像素半径**，`-1` 为编辑器写下的"未设置"哨兵。
+        """
+        r = _ext_scalar(L, "paintEvents", t, self.timing, -1.0)
+        if r <= 0:
+            return False
+        x, y, _rot, a, _size = st
+        cx, cy = (HALF_W + x) * self.sx, (HALF_H - y) * self.sy
+        cr, cg, cb = _ext_color(L, t, self.timing)
+        col = (int(cr * 255), int(cg * 255), int(cb * 255), int(255 * a))
+        rr = r * self.sy
+        draw = ImageDraw.Draw(img, "RGBA")
+        draw.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], fill=col)
+        return True
+
+    def draw_text(self, img: Image.Image, L: dict, st, t: float) -> bool:
+        """Text 线：居中渲染，字号固定，排版只能靠空格与换行。"""
+        s = _ext_text(L, t, self.timing)
+        if not s:
+            return False
+        x, y, _rot, a, _size = st
+        if a <= 0.01:
+            return False
+        cr, cg, cb = _ext_color(L, t, self.timing)
+        col = (int(cr * 255), int(cg * 255), int(cb * 255), int(255 * min(1.0, a)))
+        px = max(8, int(round(TEXT_PX * self.sy)))
+        font = _load_font(px)
+        if font is None:
+            return False
+        cx, cy = (HALF_W + x) * self.sx, (HALF_H - y) * self.sy
+        lines = s.split("\n")
+        lh = px * 1.32
+        top = cy - lh * (len(lines) - 1) / 2.0
+        draw = ImageDraw.Draw(img, "RGBA")
+        for i, line in enumerate(lines):
+            draw.text((cx, top + i * lh), line, font=font, fill=col, anchor="mm")
+        return True
+
     def draw_texture(self, img: Image.Image, L: dict, st, t: float):
         """把判定线当图片图层画出来：位置/旋转/缩放/裁切/染色/透明度。"""
         name = (L.get("Texture") or "").strip()
@@ -695,7 +804,15 @@ class Renderer:
             if a <= 0.01:
                 continue
             L = self.lines[li]
-            if self.draw_texture(img, L, states[li], t):
+            ex = L.get("extended") or {}
+            tex = (L.get("Texture") or "").strip()
+            if tex in ("", "line.png"):
+                # prpr 语义：line.png 时 paint > text > 普通线
+                if ex.get("paintEvents") and self.draw_paint(img, L, states[li], t):
+                    continue
+                if ex.get("textEvents") and self.draw_text(img, L, states[li], t):
+                    continue
+            elif self.draw_texture(img, L, states[li], t):
                 continue
             length = RPE_W * max(0.05, size)
             dx, dy = _rot(length / 2, 0, rot)

@@ -455,6 +455,7 @@ def check_chart(chart: dict) -> Dict[str, Any]:
             _check_note(li, ni, n, stats)
 
     _check_duplicates(lines, notes_by_line, stats)
+    _check_line_kinds(lines, stats)
     stats["chart_time"] = duration
     if bpm_segments:
         if duration > 0:
@@ -554,6 +555,69 @@ def _check_note(li: int, ni: int, n: Any, stats: Dict[str, Any]) -> None:
         if dur < 0:
             ERRORS.append(f"{where} Hold/Drag 的 endTime 早于 startTime")
         stats["hold_max_beats"] = max(stats["hold_max_beats"], dur)
+
+
+def _check_line_kinds(lines: List[dict], stats: Dict[str, Any]) -> None:
+    """文字/光圈/GIF 三类特殊线的互斥关系检查。
+
+    依据 prpr 源码 `parse/rpe.rs` 的线类型判定：
+
+        Texture != "line.png"        → Texture（贴图精灵，text/paint 全失效）
+        Texture == "line.png":
+            paintEvents 存在          → Paint（光圈）
+            textEvents 存在           → Text（居中文字）
+            否则                      → 普通线
+    """
+    text_lines = paint_lines = gif_lines = 0
+    for li, line in enumerate(lines):
+        ex = line.get("extended") or {}
+        tex = (line.get("Texture") or "").strip()
+        has_text = bool(ex.get("textEvents"))
+        has_paint = bool(ex.get("paintEvents"))
+        has_gif = bool(ex.get("gifEvents"))
+        text_lines += has_text
+        paint_lines += has_paint
+        gif_lines += has_gif
+
+        if tex not in ("", "line.png"):
+            if has_text:
+                WARNINGS.append(
+                    f"line[{li}] 有 textEvents 但 Texture='{tex}'：贴图线优先，"
+                    f"文字不会显示（要文字请用 line.png）")
+            if has_paint:
+                WARNINGS.append(
+                    f"line[{li}] 有 paintEvents 但 Texture='{tex}'：光圈不会生效")
+        elif has_text and has_paint:
+            WARNINGS.append(
+                f"line[{li}] 同时有 paintEvents 与 textEvents：Paint 优先，文字会被吞掉")
+
+        for kind in ("textEvents", "paintEvents", "gifEvents"):
+            for ei, ev in enumerate(ex.get(kind) or []):
+                if not isinstance(ev, dict):
+                    ERRORS.append(f"line[{li}].{kind}[{ei}] 不是对象")
+                    continue
+                where = f"line[{li}].{kind}[{ei}]"
+                for tk in ("startTime", "endTime"):
+                    err = triplet_error(ev.get(tk))
+                    if err:
+                        ERRORS.append(f"{where}.{tk} {err}")
+                if kind == "textEvents":
+                    for sk in ("start", "end"):
+                        if not isinstance(ev.get(sk), str):
+                            ERRORS.append(f"{where}.{sk} 必须是字符串")
+                else:
+                    for sk in ("start", "end"):
+                        v = ev.get(sk)
+                        if not is_number(v):
+                            ERRORS.append(f"{where}.{sk} 必须是数字")
+
+        # 文字覆盖全屏时字号固定，只能靠空格/换行排版
+        if has_text and not tex:
+            WARNINGS.append(f"line[{li}] 是文字线但 Texture 为空，建议显式写 'line.png'")
+
+    stats["text_lines"] = text_lines
+    stats["paint_lines"] = paint_lines
+    stats["gif_lines"] = gif_lines
 
 
 def _check_duplicates(lines: List[dict], notes_by_line: List[List[dict]],
@@ -764,6 +828,10 @@ def main() -> int:
     check_info(info)
     stats = check_chart(chart)
     check_extra(extra, stats)
+    # RPE 1.7 会把 effects 同时写在 chart.json 顶层，这里一并校验
+    chart_effects = chart.get("effects")
+    if chart_effects and not (extra or {}).get("effects"):
+        check_extra({"effects": chart_effects}, stats)
     semantic_warnings(stats)
 
     if args.report:
