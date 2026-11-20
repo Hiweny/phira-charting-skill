@@ -631,30 +631,58 @@ class Renderer:
                     continue
         self.notes.sort(key=lambda n: n["t"])
         self.effects = self._parse_effects(proj.extra)
+        # RPE 1.7 也会把 effects 写在 chart.json 顶层；两处合并去重
+        for e in self._parse_effects({"effects": (chart or {}).get("effects") or []}):
+            if not any(abs(e["t0"] - o["t0"]) < 1e-6 and e["shader"] == o["shader"] for o in self.effects):
+                self.effects.append(e)
+        self.effects.sort(key=lambda x: x["t0"])
         self._tex_cache: dict[str, Image.Image | None] = {}
         self._tex_scaled: dict[tuple, Image.Image] = {}
         self.texture_lines = sum(1 for L in self.lines if (L.get("Texture") or "").strip())
 
     # -- 贴图（RPE 1.6 图片判定线）--
-    def tex_image(self, name: str):
-        """加载贴图（带缓存）。贴图的像素尺寸与逻辑坐标 1:1 对应。"""
-        if name in self._tex_cache:
-            return self._tex_cache[name]
+    def tex_image(self, name: str, frame: int = 0):
+        """加载贴图（带缓存）。贴图的像素尺寸与逻辑坐标 1:1 对应。
+
+        GIF 会缓存全部帧；`frame` 选定帧序号（由 `gifEvents` 的进度决定）。
+        """
+        key = (name, frame) if name.lower().endswith(".gif") else name
+        if key in self._tex_cache:
+            return self._tex_cache[key]
         path = self.proj.root / name
         img = None
         if path.exists():
             try:
-                img = Image.open(path).convert("RGBA")
-                if getattr(img, "n_frames", 1) > 1:   # GIF 只取首帧
-                    img.seek(0)
-                    img = img.convert("RGBA")
+                im = Image.open(path)
+                n = getattr(im, "n_frames", 1)
+                if n > 1:
+                    im.seek(max(0, min(n - 1, int(frame))))
+                img = im.convert("RGBA")
             except Exception:  # noqa: BLE001
                 img = None
-        self._tex_cache[name] = img
+        self._tex_cache[key] = img
         return img
 
-    def _scaled_tex(self, name: str, sx: float, sy: float):
-        src = self.tex_image(name)
+    def gif_frame_index(self, line: dict, t: float) -> int:
+        """`gifEvents` 的值是 0~1 的播放进度，换算成帧序号。"""
+        tex = (line.get("Texture") or "")
+        if not tex.lower().endswith(".gif"):
+            return 0
+        path = self.proj.root / tex
+        n = 1
+        try:
+            if path.exists():
+                im = Image.open(path)
+                n = max(1, getattr(im, "n_frames", 1))
+        except Exception:  # noqa: BLE001
+            n = 1
+        p = _ext_scalar(line, "gifEvents", t, self.timing, -1.0)
+        if p < 0:
+            p = 0.0
+        return int(round(max(0.0, min(1.0, p)) * (n - 1)))
+
+    def _scaled_tex(self, name: str, sx: float, sy: float, frame: int = 0):
+        src = self.tex_image(name, frame)
         if src is None:
             return None
         w = max(1, int(round(src.width * abs(sx))))
@@ -662,7 +690,7 @@ class Renderer:
         if w > 4096 or h > 4096:
             w = min(w, 4096)
             h = min(h, 4096)
-        key = (name, w, h)
+        key = (name, w, h, frame)
         out = self._tex_scaled.get(key)
         if out is None:
             out = src.resize((w, h), Image.LANCZOS if (w * h) < 4_000_000 else Image.BILINEAR)
@@ -715,12 +743,13 @@ class Renderer:
         if not name:
             return False
         x, y, rot, a, size = st
-        base = self._scaled_tex(name, size, size)
+        gframe = self.gif_frame_index(L, t)
+        base = self._scaled_tex(name, size, size, gframe)
         if base is None:
             return False
         sx = _ext_scalar(L, "scaleXEvents", t, self.timing, 1.0)
         sy = _ext_scalar(L, "scaleYEvents", t, self.timing, 1.0)
-        sprite = self._scaled_tex(name, size * sx, size * sy)
+        sprite = self._scaled_tex(name, size * sx, size * sy, gframe)
         if sprite is None:
             return False
 
@@ -878,6 +907,8 @@ class Renderer:
                     "t0": self.timing.sec(tri(e.get("start"))),
                     "t1": self.timing.sec(tri(e.get("end"))),
                     "shader": (e.get("shader") or "").lower(),
+                    "vars": e.get("vars") or {},
+                    "line": int(e.get("line") or 0),
                 })
             except Exception:  # noqa: BLE001
                 continue
@@ -887,13 +918,84 @@ class Renderer:
     def active_effects(self, t: float):
         return [e["shader"] for e in self.effects if e["t0"] <= t <= e["t1"]]
 
+    def _ev(self, eff: dict, key: str, t: float, default: float) -> float:
+        """取 shader 变量的当前值（vars 里每个键都是一条事件轴）。"""
+        arr = (eff.get("vars") or {}).get(key)
+        if not arr:
+            return default
+        return _events_value(arr, t, self.timing, default)
+
+    def _fx_grayscale(self, img, eff, t):
+        f = max(0.0, min(1.0, self._ev(eff, "factor", t, 1.0)))
+        if f <= 0.01:
+            return img
+        return Image.blend(img, img.convert("L").convert("RGB"), f)
+
+    def _fx_glow(self, img, eff, t):
+        """glow_effect：按亮度阈值取亮部 → 模糊 → screen 叠加。"""
+        inten = max(0.0, self._ev(eff, "intensity", t, 0.6))
+        thr = self._ev(eff, "threshold", t, 0.3)
+        if inten <= 0.01:
+            return img
+        lum = img.convert("L")
+        lo = int(max(0.0, min(1.0, thr)) * 255)
+        mask = lum.point(lambda v: 255 if v >= lo else 0)
+        r = max(2, int(self.h * 0.018))
+        bloom = img.filter(ImageFilter.GaussianBlur(r))
+        bloom = Image.composite(bloom, Image.new("RGB", img.size, (0, 0, 0)), mask.filter(ImageFilter.GaussianBlur(r)))
+        bloom = ImageEnhance.Brightness(bloom).enhance(min(2.0, inten * 1.6))
+        return ImageChops.screen(img, bloom)
+
+    def _fx_rain(self, img, eff, t):
+        n = int(max(0, min(600, self._ev(eff, "density", t, 0))))
+        if n <= 0:
+            return img
+        hfrac = max(0.005, self._ev(eff, "height", t, 0.03))
+        wpx = max(1.0, self._ev(eff, "width", t, 0.0008) * self.w * 4)
+        speed = self._ev(eff, "speed", t, 1.0)
+        col = (int(0.70 * 255), int(0.80 * 255), int(0.90 * 255), int(0.60 * 255))
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        rnd = random.Random(20240601)
+        seeds = [(rnd.random(), rnd.random(), 0.7 + rnd.random() * 0.8) for _ in range(n)]
+        ln = max(4, int(hfrac * self.h))
+        for sx, sy, sp in seeds:
+            x = sx * self.w
+            y = ((sy + t * 0.35 * speed * sp) % 1.0) * self.h
+            d.line([(x, y), (x - wpx * 3, y + ln)], fill=col, width=max(1, int(wpx)))
+        return Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+
+    def _fx_snow(self, img, eff, t):
+        n = int(max(0, min(800, self._ev(eff, "snowCount", t, 0))))
+        if n <= 0:
+            return img
+        size = max(1.0, self._ev(eff, "size", t, 0.01) * self.h)
+        vx = self._ev(eff, "speedx", t, 20.0) / self.h
+        vy = self._ev(eff, "speedy", t, 60.0) / self.h
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        rnd = random.Random(20240602)
+        for i in range(n):
+            bx, by, sp = rnd.random(), rnd.random(), 0.5 + rnd.random()
+            x = ((bx + t * vx * sp) % 1.0) * self.w
+            y = ((by + t * vy * sp) % 1.0) * self.h
+            d.ellipse([x - size, y - size, x + size, y + size], fill=(255, 255, 255, 190))
+        return Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+
     def apply_effects(self, img: Image.Image, t: float) -> Image.Image:
-        act = self.active_effects(t)
+        act = [e for e in self.effects if e["t0"] <= t <= e["t1"]]
         if not act:
             return img
-        for name in act:
+        for eff in act:
+            name = eff["shader"]
             if "grayscale" in name:
-                img = ImageEnhance.Color(img).enhance(0.15)
+                img = self._fx_grayscale(img, eff, t)
+            elif "glow" in name:
+                img = self._fx_glow(img, eff, t)
+            elif "rain" in name:
+                img = self._fx_rain(img, eff, t)
+            elif "snow" in name:
+                img = self._fx_snow(img, eff, t)
             elif "chromatic" in name:
                 r, g, b = img.split()
                 img = Image.merge("RGB", (r.transform(r.size, Image.AFFINE, (1, 0, 4, 0, 1, 0)),
@@ -924,13 +1026,6 @@ class Renderer:
                     d = ImageDraw.Draw(img, "RGBA")
                     d.ellipse([self.w / 2 - rad, self.h / 2 - rad, self.w / 2 + rad, self.h / 2 + rad],
                               outline=(255, 255, 255, int(120 * (1 - p))), width=3)
-            elif "snow" in name:
-                d = ImageDraw.Draw(img, "RGBA")
-                rnd = random.Random(int(t * 12))
-                for _ in range(90):
-                    x = rnd.randrange(0, self.w)
-                    y = (rnd.randrange(0, self.h) + int(t * 40)) % self.h
-                    d.ellipse([x, y, x + 2, y + 2], fill=(255, 255, 255, 140))
             elif "flare" in name:
                 overlay = Image.new("RGBA", (self.w, self.h), (0, 0, 0, 0))
                 d = ImageDraw.Draw(overlay)
