@@ -183,7 +183,9 @@ bash tools/selfcheck.sh samples/tanchuang samples/tanchuang/_qc
 [《巴拉莱卡》— 零素材的几何演出](docs/04-reference/06-case-balalaika.md)
 （43 条默认线、0 贴图、147 帧/秒、视频层）。
 横向基准：[9 张谱的量化体检](docs/04-reference/05-cross-chart-benchmarks.md)
-（Flick 占比、帧/音符、X:Y 位移比、A/B/C/D 四档风格配置）。
+（Tap/Drag 配比、帧/音符、X:Y 位移比、A/B/C/D 四档风格配置）。
+社区随机取样：[10 张高评分谱的真相](docs/04-reference/07-community-batch-scan.md)
+（多数精品**不是**动画谱；已知缺口清单在这里）。
 详见 [`docs/04-reference/03-community-sampling.md`](docs/04-reference/03-community-sampling.md)。
 
 ---
@@ -221,6 +223,6 @@ bash tools/selfcheck.sh samples/tanchuang samples/tanchuang/_qc
 | `tools/validate_chart.py` | 结构与语义校验（导入前必跑） |
 | `tools/preview_render.py` | 离屏渲染：单帧 / 联系表 / 视频 / 量化指标（支持图片判定线） |
 | `tools/selfcheck.sh` | 一键自检（L1 + L2 + L2.5 + summary） |
-| `tools/chart_stats.py` | 横向基准体检：线数/贴图/帧密度/帧每音符/NPS/类型配比（`--timeline` 看时间分布） |
+| `tools/chart_stats.py` | 横向基准体检：RPE(JSON) + PEC；排除 `isFake`；`--timeline` 看时间分布 |
 | `tools/phira_community.py` | 社区谱面搜索 / 下载 / 批量取样 |
 | `tools/package_chart.sh` | 打包成可导入的 zip |

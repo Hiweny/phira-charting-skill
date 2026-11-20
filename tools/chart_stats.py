@@ -21,7 +21,10 @@ import os
 import sys
 from collections import Counter
 
-NOTE_TYPES = {1: "tap", 2: "drag", 3: "hold", 4: "flick"}
+# RPE JSON 的 type 映射（以 prpr 源码为准）：
+#   1 = Click(Tap) / 2 = Hold / 3 = Flick / 4 = Drag
+# 注意与 PEC 的 n1~n4 不同，别混用。
+NOTE_TYPES = {1: "tap", 2: "hold", 3: "flick", 4: "drag"}
 
 
 def find_chart(path: str) -> str:
@@ -29,14 +32,125 @@ def find_chart(path: str) -> str:
         return path
     cands = []
     for f in os.listdir(path):
-        if f.lower().endswith(".json") and f.lower() not in ("extra.json", "info.json"):
+        low = f.lower()
+        if low.endswith((".json", ".pec")) and low not in ("extra.json", "info.json"):
             cands.append(os.path.join(path, f))
     if not cands:
-        raise SystemExit(f"没找到谱面 json: {path}")
-    # 优先文件名是纯数字的（RPE 惯例）
-    cands.sort(key=lambda p: (not os.path.basename(p).split(".")[0].isdigit(),
+        raise SystemExit(f"没找到谱面文件: {path}")
+    # 优先 json（RPE），其次 pec；同类型里优先纯数字文件名
+    cands.sort(key=lambda p: (os.path.splitext(p)[1].lower() != ".json",
+                              not os.path.basename(p).split(".")[0].isdigit(),
                               -os.path.getsize(p)))
     return cands[0]
+
+
+PEC_TYPES = {"n1": "tap", "n2": "drag", "n3": "hold", "n4": "flick"}
+
+
+def analyze_pec(path: str) -> dict:
+    """PEC（Phigros 原生）最小解析：只取统计需要的字段。
+
+    PEC 的时间字段是**拍**（`bp 0.000 180.000` = 第 0 拍起 180 BPM），
+    和 RPE 一样需要换算；早期版本误当秒，会让 NPS 翻倍。
+    """
+    notes = Counter()
+    fake = 0
+    times: list[float] = []   # 拍
+    xs: list[float] = []
+    lines = set()
+    kp = 0
+    segs: list[tuple[float, float]] = []
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#") or line.startswith("&"):
+                continue
+            parts = line.split()
+            head = parts[0]
+            if head == "bp" and len(parts) >= 3:
+                try:
+                    segs.append((float(parts[1]), float(parts[2])))
+                except ValueError:
+                    pass
+            elif head in PEC_TYPES:
+                if len(parts) < 5:
+                    continue
+                # 字段尾部固定是 <above> <fake>，x 在倒数第三位
+                # n1: n1 line beat x above fake
+                # n2/n3: 中间多一个字段（end/速度），x 仍在倒数第三位
+                if parts[-1] == "1":
+                    fake += 1
+                    continue
+                notes[PEC_TYPES[head]] += 1
+                lines.add(parts[1])
+                try:
+                    times.append(float(parts[2]))
+                    xs.append(float(parts[-3]))
+                except ValueError:
+                    pass
+            elif head in ("cv", "cp", "cd", "cm", "ca"):
+                kp += 1
+                if len(parts) > 1:
+                    lines.add(parts[1])
+    total = sum(notes.values())
+    segs.sort()
+    if not segs:
+        segs = [(0.0, 120.0)]
+    # PEC 的时间字段是"拍"，必须按 bp 分段换算成秒
+    secs = [beat_to_sec(t, segs) for t in times]
+    dur = (max(secs) - min(secs)) if secs else 0.0
+    peak = 0
+    if secs:
+        s = sorted(secs)
+        j = 0
+        for i in range(len(s)):
+            while s[i] - s[j] > 1.0:
+                j += 1
+            peak = max(peak, i - j + 1)
+    audio = _audio_len(os.path.dirname(os.path.abspath(path)))
+    return {
+        "name": os.path.basename(os.path.dirname(os.path.abspath(path))) or os.path.basename(path),
+        "format": "PEC",
+        "seconds": round(audio or dur, 1),
+        "lines": len(lines),
+        "tex_lines": 0, "textures": 0, "shaders": 0,
+        "notes": total, "fake": fake,
+        "tap": notes["tap"], "drag": notes["drag"],
+        "hold": notes["hold"], "flick": notes["flick"],
+        "nps": round(total / dur, 2) if dur else 0,
+        "peak_nps": peak,
+        "x_span": [round(min(xs)), round(max(xs))] if xs else [0, 0],
+        "kp": kp,
+        "kp_per_s": round(kp / (audio or dur), 1) if (audio or dur) else 0,
+        "kp_per_note": round(kp / total, 1) if total else 0,
+        "layers": 0, "rot_lines": 0, "incline_lines": 0, "speed_events": 0,
+        "hold_ratio": round(notes["hold"] / total, 2) if total else 0,
+        "offset": 0,
+        "channels": {},
+    }
+
+
+def _audio_len(directory: str) -> float:
+    """优先 ffprobe（mutagen 对部分 mp3 会读出约 2 倍时长）。"""
+    for f in sorted(os.listdir(directory or ".")):
+        if f.lower().endswith((".ogg", ".mp3", ".wav")):
+            ap = os.path.join(directory, f)
+            try:
+                import subprocess
+                out = subprocess.run(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "csv=p=0", ap],
+                    capture_output=True, text=True, timeout=20).stdout.strip()
+                if out:
+                    return float(out)
+            except Exception:
+                pass
+            try:
+                from mutagen import File as MFile
+                return float(MFile(ap).info.length)
+            except Exception:
+                return 0.0
+    return 0.0
 
 
 def count_events(events) -> int:
@@ -75,17 +189,18 @@ def beat_to_sec(beat: float, segs: list[tuple[float, float]]) -> float:
 
 def analyze(path: str) -> dict:
     chart_path = find_chart(path)
+    if chart_path.lower().endswith(".pec"):
+        return analyze_pec(chart_path)
     with open(chart_path, encoding="utf-8-sig") as f:
         data = json.load(f)
 
     lines = data.get("judgeLineList") or []
     fmt = "RPE"
     if not lines:
-        fmt = "PEC/PGR"
-        raise SystemExit(f"{chart_path}: 目前只支持 RPE(JSON) 格式")
+        raise SystemExit(f"{chart_path}: 没有 judgeLineList，可能是其它格式")
 
     notes = Counter()
-    nps_bins = Counter()
+    fake = 0
     x_min, x_max = 1e9, -1e9
     y_min, y_max = 1e9, -1e9
     all_t = []
@@ -104,6 +219,9 @@ def analyze(path: str) -> dict:
             tex.add(texname)
             tex_lines += 1
         for ns in (ln.get("notes") or []):
+            if ns.get("isFake"):
+                fake += 1
+                continue
             t = ns.get("type")
             notes[NOTE_TYPES.get(t, f"t{t}")] += 1
             st = ns.get("startTime")
@@ -153,27 +271,8 @@ def analyze(path: str) -> dict:
                 j += 1
             peak = max(peak, i - j + 1)
 
-    # 音乐时长：优先 ffprobe（mutagen 对部分 mp3 会读出约 2 倍时长）
-    audio = 0.0
-    for f in os.listdir(os.path.dirname(chart_path) or "."):
-        if f.lower().endswith((".ogg", ".mp3", ".wav")):
-            ap = os.path.join(os.path.dirname(chart_path), f)
-            try:
-                import subprocess
-                out = subprocess.run(
-                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                     "-of", "csv=p=0", ap],
-                    capture_output=True, text=True, timeout=20).stdout.strip()
-                audio = float(out)
-            except Exception:
-                audio = 0.0
-            if not audio:
-                try:
-                    from mutagen import File as MFile  # 兜底
-                    audio = MFile(ap).info.length
-                except Exception:
-                    audio = 0.0
-            break
+    # 音乐时长
+    audio = _audio_len(os.path.dirname(chart_path) or ".")
 
     off = data.get("offset", 0)
     return {
@@ -186,7 +285,7 @@ def analyze(path: str) -> dict:
         "shaders": len(data.get("effectObjects") or []) or sum(
             1 for f in os.listdir(os.path.dirname(chart_path) or ".")
             if f.lower().endswith(".glsl")),
-        "notes": total_notes,
+        "notes": total_notes, "fake": fake,
         "tap": notes["tap"], "drag": notes["drag"],
         "hold": notes["hold"], "flick": notes["flick"],
         "nps": round(total_notes / dur, 2) if dur else 0,
