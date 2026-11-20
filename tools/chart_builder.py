@@ -374,14 +374,13 @@ class Line:
         return self
 
     # ---- 扩展 ----
-    def add_text(self, start, end, text: str, font: str = "",
-                 easing: int = 1) -> "Line":
-        ev = {
+    @staticmethod
+    def _text_event(start, end, from_text: str, to_text: str, easing: int) -> Dict[str, Any]:
+        return {
             "startTime": bt(start),
             "endTime": bt(end),
-            "start": str(text),
-            "end": str(text),
-            "font": font,
+            "start": str(from_text),
+            "end": str(to_text),
             "easingType": int(easing),
             "easingLeft": 0.0,
             "easingRight": 1.0,
@@ -389,7 +388,59 @@ class Line:
             "bezierPoints": [0.0, 0.0, 0.0, 0.0],
             "linkgroup": 0,
         }
-        self.extended.setdefault("textEvents", []).append(ev)
+
+    def add_text(self, start, end, text: str, from_text: str = "",
+                 easing: int = 1) -> "Line":
+        """文字事件。`from_text` 留空 = 打字机（逐字显现）。
+
+        注意两条硬规则（见 docs/01-format/06-line-kinds-and-effects.md）：
+        1. 只有 `Texture` 为 `line.png`（或其它非贴图占位）时文字才渲染；
+           任何真实贴图都会让 textEvents 失效。
+        2. 同一条线若同时有 `paintEvents`，paint 优先，文字被吞掉。
+        """
+        self.extended.setdefault("textEvents", []).append(
+            self._text_event(start, end, from_text, text, easing))
+        return self
+
+    def typewriter(self, start, end, text: str, easing: int = 1) -> "Line":
+        """打字机：从空串渐变到 text（逐字显现）。"""
+        return self.add_text(start, end, text, from_text="", easing=easing)
+
+    def add_paint(self, start, end, radius_from: float,
+                  radius_to: Optional[float] = None, easing: int = 1) -> "Line":
+        """光圈事件（Paint 线专用）：像素半径，`<=0` 表示关闭。
+
+        `radius_to` 留空则恒定；给出 `0 → 1200` 就是一次 iris 开屏。
+        线与 `line.png` + paintEvents 组合时，整屏被一个圆形填满/收束，
+        是零贴图做 iris 转场的方式。
+        """
+        r1 = radius_from if radius_to is None else radius_to
+        self.extended.setdefault("paintEvents", []).append({
+            "startTime": bt(start),
+            "endTime": bt(end),
+            "start": float(radius_from),
+            "end": float(r1),
+            "easingType": int(easing),
+            "easingLeft": 0.0,
+            "easingRight": 1.0,
+            "bezier": 0,
+            "bezierPoints": [0.0, 0.0, 0.0, 0.0],
+            "linkgroup": 0,
+        })
+        return self
+
+    def add_gif(self, start, end, progress_from: float, progress_to: float,
+                easing: int = 1) -> "Line":
+        """GIF 播放进度事件（0~1，按帧序列定位，不是播放速度）。"""
+        self.is_gif = True
+        self.extended.setdefault("gifEvents", []).append({
+            "startTime": bt(start),
+            "endTime": bt(end),
+            "start": float(progress_from),
+            "end": float(progress_to),
+            "easingType": int(easing),
+            "linkgroup": 0,
+        })
         return self
 
     def scale(self, x: float = 1.0, y: float = 1.0, start=0, end=None) -> "Line":
@@ -545,12 +596,22 @@ class Chart:
 
     def add_effect(self, shader: str, start: Any, end: Any,
                    vars: Optional[Dict[str, Any]] = None,
-                   global_: bool = False) -> Dict[str, Any]:
+                   global_: bool = False, line: int = 0,
+                   order: int = 0, clone: bool = False) -> Dict[str, Any]:
+        """挂一个 shader 特效。
+
+        `shader` 可以是 `.glsl` 文件（如 `"/rain_pr.glsl"`）或内置名
+        （`"grayscale"`）。`line` 是它作用的判定线序号（0 = 全屏层）。
+        `vars` 的每个键都要是"事件数组"：`{"density": [event(...)]}`。
+        """
         eff = {
             "shader": shader,
             "start": bt(start),
             "end": bt(end),
             "global": bool(global_),
+            "line": int(line),
+            "order": int(order),
+            "clone": bool(clone),
         }
         if vars:
             eff["vars"] = vars
@@ -578,7 +639,7 @@ class Chart:
 
     # ---- 输出 ----
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "BPMList": sorted(self.bpm_list, key=lambda x: parse_bt(x["startTime"])),
             "META": dict(self.meta),
             "chartTime": float(self.duration),
@@ -587,6 +648,11 @@ class Chart:
             "multiLineString": "",
             "multiScale": 1.0,
         }
+        # RPE 1.7 把 effects 同时写进 chart.json 顶层；prpr 只读 extra.json。
+        # 两边都写，保证编辑器与播放器都能看到。
+        if self.effects:
+            d["effects"] = [dict(e) for e in self.effects]
+        return d
 
     def save(self, path: str = "chart.json") -> str:
         _write_json(path, self.to_dict())
