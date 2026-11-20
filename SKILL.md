@@ -179,7 +179,9 @@ bash tools/selfcheck.sh samples/tanchuang samples/tanchuang/_qc
 
 **先看画面（联系表），再看结构（代码），最后对指标。** 只看代码学不会演出。
 已拆解案例：[《enchanted love》— 谱面即舞台剧](docs/04-reference/04-case-enchanted-love.md)
-（287 条图片判定线、101 张贴图、零 shader，141 秒动画）。
+（287 条图片判定线、101 张贴图、26 张字母图、零 shader）。
+横向基准：[8 张谱的量化体检](docs/04-reference/05-cross-chart-benchmarks.md)
+（Flick 占比、帧/音符、X:Y 位移比、A/B/C 三档风格配置）。
 详见 [`docs/04-reference/03-community-sampling.md`](docs/04-reference/03-community-sampling.md)。
 
 ---
@@ -217,5 +219,6 @@ bash tools/selfcheck.sh samples/tanchuang samples/tanchuang/_qc
 | `tools/validate_chart.py` | 结构与语义校验（导入前必跑） |
 | `tools/preview_render.py` | 离屏渲染：单帧 / 联系表 / 视频 / 量化指标（支持图片判定线） |
 | `tools/selfcheck.sh` | 一键自检（L1 + L2 + L2.5 + summary） |
+| `tools/chart_stats.py` | 横向基准体检：线数/贴图/帧密度/帧每音符/NPS/类型配比 |
 | `tools/phira_community.py` | 社区谱面搜索 / 下载 / 批量取样 |
 | `tools/package_chart.sh` | 打包成可导入的 zip |
