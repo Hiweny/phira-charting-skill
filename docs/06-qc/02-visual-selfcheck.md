@@ -115,6 +115,11 @@ python3 tools/preview_render.py my-chart --stats > stats.json
 | 画面里 note 比预期少 | 只渲染命中前 3 秒窗口内的 note，高速谱的大量 note 还在屏幕外 | 属正常 |
 | 判定线形状/位置略有出入 | 近似处理 `skew`、`xybind`、`multiLineString` | 需要精确时走下面第 4 节 |
 | 特效只是示意 | 用近似滤镜代替真实 shader | 特效验收必须走 prpr-render 或 Phira 本体 |
+| GIF 贴图只有首帧 | 只解码第一帧 | 需要看动画时用 prpr-render |
+
+> 图片判定线（`Texture`）已支持：按像素尺寸 1:1 映射，
+> 会应用 `scaleX/scaleY`、`colorEvents`、`inclineEvents`、`anchor`、`zOrder`。
+> 所以《enchanted love》这类"动画谱"也能出联系表与视频。
 
 > 一句话：**结构错误看 `validate_chart.py`，运动与构图看 `preview_render.py`，
 > 特效与像素看 prpr-render。**

@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter
 
 # ---------------------------------------------------------------- 常量
 
@@ -359,20 +359,86 @@ def _layers_sum(line: dict, key: str, t: float, timing: Timing, factor: float = 
     return total
 
 
+def _blank_alpha(events) -> bool:
+    """编辑器写的空白占位：全部关键帧都是 0 -> 0，等价于"这个通道没设过"。
+
+    RPE 保存时经常给没用到的图层写上 `{"start":0,"end":0}`。
+    如果当成真的 0，整条线（以及挂在上面的所有 note）都会消失。
+    """
+    if not events:
+        return True
+    for e in events:
+        if not isinstance(e, dict):
+            return False
+        if float(e.get("start", 0) or 0) != 0.0 or float(e.get("end", 0) or 0) != 0.0:
+            return False
+    return True
+
+
 def _layers_alpha(line: dict, t: float, timing: Timing) -> float:
     """RPE 的多个 eventLayer 是**叠加**关系（与 prpr 的 AnimFloat::chain 一致）。
 
-    没有 alphaEvents 的图层不参与计算；有事件的图层把 0~255 归一化后相加，
-    最后 clamp 到 1。若所有图层都没有 alpha 事件，视为不透明。
+    没有 alphaEvents 的图层不参与计算；全 0 占位的事件同样不参与
+    （见 `_blank_alpha`）。有事件的图层把 0~255 归一化后相加，最后 clamp 到 1。
     """
     vals = []
     for lay in line.get("eventLayers") or []:
         if isinstance(lay, dict) and lay.get("alphaEvents"):
+            if _blank_alpha(lay.get("alphaEvents")):
+                continue
             v = _events_value(lay.get("alphaEvents"), t, timing, 255.0)
             vals.append(max(0.0, min(1.0, v / 255.0 if v > 1.5 else v)))
     if not vals:
         return 1.0
     return max(0.0, min(1.0, sum(vals)))
+
+
+def _ext_scalar(line: dict, key: str, t: float, timing: Timing, default: float = 1.0) -> float:
+    """RPE 1.6 扩展事件（scaleX / scaleY / incline / gif）求值。
+
+    与普通 *Control 不同，扩展事件直接内联在 `line["extended"]` 里，
+    元素形如 {"startTime":[..], "endTime":[..], "start":0.7, "end":0.7}。
+    """
+    ev = (line.get("extended") or {}).get(key)
+    if not ev:
+        return default
+    return _events_value(ev, t, timing, default)
+
+
+def _ext_color(line: dict, t: float, timing: Timing) -> tuple[float, float, float]:
+    """colorEvents 求值（RGB 0~255）。多个关键帧之间线性插值。"""
+    ev = (line.get("extended") or {}).get("colorEvents")
+    if not ev:
+        return (1.0, 1.0, 1.0)
+
+    def _c(v):
+        if isinstance(v, (list, tuple)) and len(v) >= 3:
+            return [float(x) / 255.0 for x in v[:3]]
+        if isinstance(v, (int, float)):
+            return [float(v)] * 3
+        return [1.0, 1.0, 1.0]
+
+    pts = []
+    for e in ev:
+        try:
+            pts.append((tri(e["startTime"]), _c(e.get("start"))))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not pts:
+        return (1.0, 1.0, 1.0)
+    pts.sort(key=lambda p: p[0])
+    beat = timing.beat_at(t)
+    if beat <= pts[0][0]:
+        return tuple(pts[0][1])
+    for i in range(len(pts) - 1):
+        b0, c0 = pts[i]
+        b1, c1 = pts[i + 1]
+        if b0 <= beat <= b1:
+            p = 0.0 if b1 == b0 else (beat - b0) / (b1 - b0)
+            return (c0[0] + (c1[0] - c0[0]) * p,
+                    c0[1] + (c1[1] - c0[1]) * p,
+                    c0[2] + (c1[2] - c0[2]) * p)
+    return tuple(pts[-1][1])
 
 
 class SpeedField:
@@ -496,6 +562,91 @@ class Renderer:
                     continue
         self.notes.sort(key=lambda n: n["t"])
         self.effects = self._parse_effects(proj.extra)
+        self._tex_cache: dict[str, Image.Image | None] = {}
+        self._tex_scaled: dict[tuple, Image.Image] = {}
+        self.texture_lines = sum(1 for L in self.lines if (L.get("Texture") or "").strip())
+
+    # -- 贴图（RPE 1.6 图片判定线）--
+    def tex_image(self, name: str):
+        """加载贴图（带缓存）。贴图的像素尺寸与逻辑坐标 1:1 对应。"""
+        if name in self._tex_cache:
+            return self._tex_cache[name]
+        path = self.proj.root / name
+        img = None
+        if path.exists():
+            try:
+                img = Image.open(path).convert("RGBA")
+                if getattr(img, "n_frames", 1) > 1:   # GIF 只取首帧
+                    img.seek(0)
+                    img = img.convert("RGBA")
+            except Exception:  # noqa: BLE001
+                img = None
+        self._tex_cache[name] = img
+        return img
+
+    def _scaled_tex(self, name: str, sx: float, sy: float):
+        src = self.tex_image(name)
+        if src is None:
+            return None
+        w = max(1, int(round(src.width * abs(sx))))
+        h = max(1, int(round(src.height * abs(sy))))
+        if w > 4096 or h > 4096:
+            w = min(w, 4096)
+            h = min(h, 4096)
+        key = (name, w, h)
+        out = self._tex_scaled.get(key)
+        if out is None:
+            out = src.resize((w, h), Image.LANCZOS if (w * h) < 4_000_000 else Image.BILINEAR)
+            self._tex_scaled[key] = out
+        return out
+
+    def draw_texture(self, img: Image.Image, L: dict, st, t: float):
+        """把判定线当图片图层画出来：位置/旋转/缩放/裁切/染色/透明度。"""
+        name = (L.get("Texture") or "").strip()
+        if not name:
+            return False
+        x, y, rot, a, size = st
+        base = self._scaled_tex(name, size, size)
+        if base is None:
+            return False
+        sx = _ext_scalar(L, "scaleXEvents", t, self.timing, 1.0)
+        sy = _ext_scalar(L, "scaleYEvents", t, self.timing, 1.0)
+        sprite = self._scaled_tex(name, size * sx, size * sy)
+        if sprite is None:
+            return False
+
+        # incline：水平剪切（角度制）
+        inc = _ext_scalar(L, "inclineEvents", t, self.timing, 0.0)
+        if abs(inc) > 0.01:
+            k = math.tan(math.radians(max(-80.0, min(80.0, inc))))
+            sprite = sprite.transform(sprite.size, Image.AFFINE, (1, k, -k * sprite.height / 2, 0, 1, 0))
+
+        # 染色
+        r, g, b = _ext_color(L, t, self.timing)
+        if abs(r - 1) > 0.01 or abs(g - 1) > 0.01 or abs(b - 1) > 0.01:
+            tint = Image.new("RGB", sprite.size, (int(r * 255), int(g * 255), int(b * 255)))
+            rgb = ImageChops.multiply(sprite.convert("RGB"), tint)
+            sprite = Image.merge("RGBA", (*rgb.split(), sprite.getchannel("A")))
+
+        if a < 0.999:
+            al = sprite.getchannel("A").point(lambda v: int(v * a))
+            sprite = sprite.copy()
+            sprite.putalpha(al)
+
+        if abs(rot) > 0.01:
+            sprite = sprite.rotate(rot, resample=Image.BICUBIC, expand=True)
+
+        ax, ay = (L.get("anchor") or [0.5, 0.5])[:2]
+        cx = (HALF_W + x) * self.sx
+        cy = (HALF_H - y) * self.sy
+        ox = (ax - 0.5) * sprite.width
+        oy = (ay - 0.5) * sprite.height
+        left = int(cx - sprite.width / 2 - ox)
+        top = int(cy - sprite.height / 2 - oy)
+        if left > self.w or top > self.h or left + sprite.width < 0 or top + sprite.height < 0:
+            return True
+        img.paste(sprite, (left, top), sprite)
+        return True
 
     # -- 状态求值 --
     def line_state(self, L: dict, t: float):
@@ -536,12 +687,15 @@ class Renderer:
             img = ImageEnhance.Brightness(img).enhance(max(0.05, 1.0 - self.bg_dim))
         draw = ImageDraw.Draw(img, "RGBA")
 
-        # 判定线
+        # 判定线（有 Texture 的按图片图层画，其余画线）
         states = [self.line_state(L, t) for L in self.lines]
         order = sorted(range(len(self.lines)), key=lambda i: self.lines[i].get("zOrder", 0))
         for li in order:
             x, y, rot, a, size = states[li]
             if a <= 0.01:
+                continue
+            L = self.lines[li]
+            if self.draw_texture(img, L, states[li], t):
                 continue
             length = RPE_W * max(0.05, size)
             dx, dy = _rot(length / 2, 0, rot)
@@ -549,6 +703,7 @@ class Renderer:
             col = (200, 220, 255, int(170 * a))
             draw.line([(cx - dx * self.sx, cy + dy * self.sy), (cx + dx * self.sx, cy - dy * self.sy)],
                       fill=col, width=max(2, int(3 * self.sy)))
+        draw = ImageDraw.Draw(img, "RGBA")   # paste 会失效旧的 draw 句柄
 
         # 音符（先画 Hold 体，再画头）
         for ni, n in enumerate(self.notes):
