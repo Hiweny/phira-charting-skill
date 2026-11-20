@@ -177,9 +177,43 @@ def fmt_table(rows: list[dict]) -> str:
     return "\n".join(out)
 
 
+def timeline(path: str, step: float = 10.0) -> str:
+    """按时间分桶的事件密度，用于识别"平均指标骗人"的情况。"""
+    chart_path = find_chart(path)
+    with open(chart_path, encoding="utf-8-sig") as f:
+        data = json.load(f)
+    buckets: Counter = Counter()
+    for ln in (data.get("judgeLineList") or []):
+        for ly in (ln.get("eventLayers") or []):
+            if not isinstance(ly, dict):
+                continue
+            for v in ly.values():
+                if not isinstance(v, list):
+                    continue
+                for e in v:
+                    st = e.get("startTime") if isinstance(e, dict) else None
+                    if not isinstance(st, list) or len(st) < 2:
+                        continue
+                    t = st[0] + st[1] / (st[2] if len(st) > 2 and st[2] else 1)
+                    buckets[int(t // step) * int(step)] += 1
+    if not buckets:
+        return "（无事件）"
+    peak = max(buckets.values())
+    lines_out = [f"{'起(s)':>6} {'帧数':>6}  密度"]
+    for b in sorted(buckets):
+        n = buckets[b]
+        bar = "█" * max(1, round(n / peak * 40))
+        lines_out.append(f"{b:>6} {n:>6}  {bar}")
+    return "\n".join(lines_out)
+
+
 def main() -> None:
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     as_json = "--json" in sys.argv
+    if "--timeline" in sys.argv:
+        for a in args:
+            print(f"## {a}\n{timeline(a)}")
+        return
     rows = []
     for a in args:
         try:
