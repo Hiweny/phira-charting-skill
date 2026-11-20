@@ -179,9 +179,11 @@ bash tools/selfcheck.sh samples/tanchuang samples/tanchuang/_qc
 
 **先看画面（联系表），再看结构（代码），最后对指标。** 只看代码学不会演出。
 已拆解案例：[《enchanted love》— 谱面即舞台剧](docs/04-reference/04-case-enchanted-love.md)
-（287 条图片判定线、101 张贴图、26 张字母图、零 shader）。
-横向基准：[8 张谱的量化体检](docs/04-reference/05-cross-chart-benchmarks.md)
-（Flick 占比、帧/音符、X:Y 位移比、A/B/C 三档风格配置）。
+（287 条图片判定线、101 张贴图、零 shader）、
+[《巴拉莱卡》— 零素材的几何演出](docs/04-reference/06-case-balalaika.md)
+（43 条默认线、0 贴图、147 帧/秒、视频层）。
+横向基准：[9 张谱的量化体检](docs/04-reference/05-cross-chart-benchmarks.md)
+（Flick 占比、帧/音符、X:Y 位移比、A/B/C/D 四档风格配置）。
 详见 [`docs/04-reference/03-community-sampling.md`](docs/04-reference/03-community-sampling.md)。
 
 ---
