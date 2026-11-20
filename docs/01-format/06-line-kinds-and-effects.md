@@ -228,7 +228,41 @@ iris.add_paint(9, 15, 0.0, 1500.0)          # 0 → 1500 像素，开屏
 
 ---
 
-## 7. 踩坑清单
+## 7. 自检渲染怎么做近似（`preview_render`）
+
+PIL 跑不了 GLSL，所以按"看到的结构对、参数随事件轴变化"的标准做近似。
+**作用：验证演出节奏，不追求像素级一致。**
+
+| shader | 近似做法 | 变量映射 |
+|---|---|---|
+| `grayscale` | `Image.blend(原图, 灰度图, factor)` | `factor` 0~1 |
+| `glow_effect_pr` | 亮度阈值取亮部 → 高斯模糊 → `screen` 叠加 | `intensity`、`threshold` |
+| `rain_pr` | 画 N 条斜线，`y` 随时间循环 | `density`(条数)、`height`(长度比)、`width`、`speed` |
+| `snow_pr` | N 个白点，`x/y` 随时间漂移 | `snowCount`、`size`、`speedx`、`speedy` |
+| `chromatic` | R/B 通道水平位移 | — |
+
+实现要点：
+
+- `effects` 会同时从 `extra.json` 与 `chart.json` 顶层合并（按 `startTime + shader` 去重）
+- 每个变量都走**事件轴求值**，所以"雨从 0 加到 100"在自检里也真的是渐进的
+- 未知 shader 名称会被忽略但不报错，`HUD` 里会显示当前激活的 shader 名
+
+**GIF 判定线**：`preview_render` 现在会按 `gifEvents` 的进度取帧
+（`gif_frame_index()`），所以"扫描线扫过一次"这类动画可以逐帧验收。
+GIF 只随事件走、不按真实时间自播 —— 这与 RPE 的行为一致。
+
+**已知近似误差**：
+
+| 项 | 差异 |
+|---|---|
+| 雨/雪 | 用的是固定随机种子，不是 shader 里的 hash，图案不会逐帧完全一致 |
+| 辉光 | 只做一层模糊，真实 shader 是多重采样 |
+| 文字 | 字体、字号取自本机 Noto CJK，客户端可能不同 |
+| 光圈 | 用 `ellipse` 填充，边缘无抗锯齿 |
+
+---
+
+## 8. 踩坑清单
 
 | 现象 | 原因 | 修法 |
 |---|---|---|
