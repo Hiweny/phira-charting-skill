@@ -126,36 +126,107 @@ class Timing:
 # ---------------------------------------------------------------- 缓动
 
 def ease(kind: int, p: float) -> float:
+    """RPE easingType，严格对齐 Phira 官方表
+
+    https://teamflos.github.io/phira-docs/en/chart-standard/chart-format/rpe/extend.html
+    1 Linear · 2 OutSine · 3 InSine · 4 OutQuad · 5 InQuad · 6 InOutSine
+    7 InOutQuad · 8 OutCubic · 9 InCubic · 10 OutQuart · 11 InQuart
+    12 InOutCubic · 13 InOutQuart · 14 OutQuint · 15 InQuint
+    16 OutExpo · 17 InExpo · 18 OutCirc · 19 InCirc · 20 OutBack
+    21 InBack · 22 InOutCirc · 23 InOutBack · 24 OutElastic
+    25 InElastic · 26 OutBounce · 27 InBounce · 28 InOutBounce · 29 InOutElastic
+    """
     p = max(0.0, min(1.0, p))
-    if kind in (0,):
+    if kind <= 0:                                            # fixed
         return 0.0 if p < 1 else 1.0
     if kind == 1:
-        return p
+        return p                                             # Linear
     if kind == 2:
-        return 1 - math.cos(p * math.pi / 2)
+        return math.sin(p * math.pi / 2)                     # OutSine
     if kind == 3:
-        return math.sin(p * math.pi / 2)
+        return 1 - math.cos(p * math.pi / 2)                 # InSine
     if kind == 4:
-        return p * p
+        return 1 - (1 - p) ** 2                              # OutQuad
     if kind == 5:
-        return 1 - (1 - p) * (1 - p)
+        return p ** 2                                        # InQuad
     if kind == 6:
-        return -(math.cos(math.pi * p) - 1) / 2
+        return -(math.cos(math.pi * p) - 1) / 2              # InOutSine
     if kind == 7:
         return 2 * p * p if p < 0.5 else 1 - (-2 * p + 2) ** 2 / 2
     if kind == 8:
-        return p ** 3
+        return 1 - (1 - p) ** 3                              # OutCubic
     if kind == 9:
-        return 1 - (1 - p) ** 3
+        return p ** 3                                        # InCubic
     if kind == 10:
-        return p ** 4
+        return 1 - (1 - p) ** 4                              # OutQuart
     if kind == 11:
-        return 1 - (1 - p) ** 4
+        return p ** 4                                        # InQuart
     if kind == 12:
         return 4 * p ** 3 if p < 0.5 else 1 - (-2 * p + 2) ** 3 / 2
     if kind == 13:
         return 8 * p ** 4 if p < 0.5 else 1 - (-2 * p + 2) ** 4 / 2
+    if kind == 14:
+        return 1 - (1 - p) ** 5                              # OutQuint
+    if kind == 15:
+        return p ** 5                                        # InQuint
+    if kind == 16:
+        return 1.0 if p >= 1 else 1 - 2 ** (-10 * p)         # OutExpo
+    if kind == 17:
+        return 0.0 if p <= 0 else 2 ** (10 * p - 10)         # InExpo
+    if kind == 18:
+        return math.sqrt(max(0.0, 1 - (p - 1) ** 2))         # OutCirc
+    if kind == 19:
+        return 1 - math.sqrt(max(0.0, 1 - p * p))            # InCirc
+    if kind == 20:
+        return 1 + 2.70158 * (p - 1) ** 3 + 1.70158 * (p - 1) ** 2   # OutBack
+    if kind == 21:
+        return 2.70158 * p ** 3 - 1.70158 * p ** 2           # InBack
+    if kind == 22:
+        if p < 0.5:
+            return (1 - math.sqrt(max(0.0, 1 - (2 * p) ** 2))) / 2
+        return (math.sqrt(max(0.0, 1 - (-2 * p + 2) ** 2)) + 1) / 2
+    if kind == 23:
+        if p < 0.5:
+            return ((2 * p) ** 2 * ((2.5949095 + 1) * 2 * p - 2.5949095)) / 2
+        return ((2 * p - 2) ** 2 * ((2.5949095 + 1) * (p * 2 - 2) + 2.5949095) + 2) / 2
+    if kind == 24:
+        if p in (0.0, 1.0):
+            return p
+        return 2 ** (-10 * p) * math.sin((p * 10 - 0.75) * (2 * math.pi / 3)) + 1
+    if kind == 25:
+        if p in (0.0, 1.0):
+            return p
+        return -2 ** (10 * p - 10) * math.sin((p * 10 - 10.75) * (2 * math.pi / 3))
+    if kind == 26:
+        return _bounce(p)                                    # OutBounce
+    if kind == 27:
+        return 1 - _bounce(1 - p)                            # InBounce
+    if kind == 28:
+        if p < 0.5:
+            return (1 - _bounce(1 - 2 * p)) / 2
+        return (1 + _bounce(2 * p - 1)) / 2
+    if kind == 29:
+        if p <= 0.0:
+            return 0.0
+        if p >= 1.0:
+            return 1.0
+        if p < 0.5:
+            return -(2 ** (20 * p - 10) * math.sin((20 * p - 11.125) * (2 * math.pi / 4.5))) / 2
+        return (2 ** (-20 * p + 10) * math.sin((20 * p - 11.125) * (2 * math.pi / 4.5))) / 2 + 1
     return p
+
+
+def _bounce(t: float) -> float:
+    if t < 1 / 2.75:
+        return 7.5625 * t * t
+    if t < 2 / 2.75:
+        t -= 1.5 / 2.75
+        return 7.5625 * t * t + 0.75
+    if t < 2.5 / 2.75:
+        t -= 2.25 / 2.75
+        return 7.5625 * t * t + 0.9375
+    t -= 2.625 / 2.75
+    return 7.5625 * t * t + 0.984375
 
 
 def lerp(a, b, p):
@@ -807,7 +878,8 @@ class Renderer:
         H = self._speed[n["line"]]
         hit = n["t"] if hit_t is None else hit_t
         dist = (H.H(hit) - H.H(t)) * HALF_H * n["speed"] * self.speed_mul
-        sign = 1.0 if n["above"] >= 1 else -1.0
+        # RPE/Phira: above=1 正面下落；above=2 反向；其余按下落处理
+        sign = -1.0 if n["above"] == 2 else 1.0
         rel_x = n["x"] - lx
         rel_y = sign * max(0.0, dist) + n["yoff"]
         rx, ry = _rot(rel_x, rel_y, rot)
@@ -861,14 +933,13 @@ class Renderer:
             px, py, rot, la, lsize, _dist = self.note_pos(ni, t, st)
             if px < -200 or px > self.w + 200 or py < -300 or py > self.h + 300:
                 continue
-            a = max(0.0, min(1.0, n["alpha"] * la))
+            # RPE/Phira：判定线 alpha 只影响线本身，音符 alpha 独立。
+            # 早期版本这里乘了 la，导致"透明线上的音符"在预览里假性消失，
+            # 与实机（音符照常显示、照常判定）不一致。
+            a = max(0.0, min(1.0, n["alpha"]))
             if a <= 0.02:
                 continue
-            if n["fake"]:
-                a *= 0.45
             col = NOTE_COLORS.get(n["type"], (255, 255, 255))
-            if n["fake"]:
-                col = (150, 150, 160)
             sz = 18.0 * max(0.4, n["size"]) * self.sy
 
             if n["type"] == 2 and n["te"] > n["t"]:

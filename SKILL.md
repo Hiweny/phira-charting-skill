@@ -9,6 +9,12 @@ description: 制作 / 修改 / 校验 Phira(RPE 格式) 谱面时使用。覆盖
 谱面是**随音乐播放的动态视觉作品**——一场 3 分钟的动画演出，只是恰好可以打。
 代码只是画笔，判定线是演员，note 是节拍的可视化。
 
+> **下一个 Agent 先读这三页**：
+> [审美契约](docs/03-workflow/06-art-contract.md)（主人在多轮制谱中固化的硬约束）→
+> [note 与线的编排手册](docs/04-reference/11-note-and-line-choreography.md)（轨迹/拟物/3D）→
+> [案例拆解](docs/04-reference/10-case-shiluozhiyu.md)（琵琶行 / 放空 / 时落之雨）。
+> 读完再动笔，不要从零猜。
+
 ---
 
 ## 0. 先说清楚：这不是模板
@@ -158,6 +164,11 @@ c.save_extra("extra.json")
 | L2 指标 | `tools/preview_render.py --stats` | `hidden_notes==0`、越界 ≤2%、提前可见 ≥0.80、NPS 匹配标称 |
 | L2.5 视觉 | `contact_sheet.png` | 无全黑帧、线用满屏幕、高潮明显更密 |
 | L3 运动 | `--video` 关键段 + 逐帧看 | 下落方向一致、无黏线/闪现、转场有事件 |
+| L4 真机 | Phira 本体导入 zip | 皮肤/打击特效/掉帧/手感 |
+
+L4 的做法（下载 Phira、无显示器环境、谱面放哪、已知黑屏坑）：
+[`docs/06-qc/03-real-engine.md`](docs/06-qc/03-real-engine.md)。
+本地预览只验证结构与构图；**观感与手感必须过真机**。
 
 关键段视频例子：
 
@@ -184,6 +195,9 @@ bash tools/selfcheck.sh samples/tanchuang samples/tanchuang/_qc
 （287 条图片判定线、101 张贴图、零 shader）、
 [《巴拉莱卡》— 零素材的几何演出](docs/04-reference/06-case-balalaika.md)
 （43 条默认线、0 贴图、147 帧/秒、视频层）。
+[《琵琶行》/《放空》/《时落之雨》逐秒拆解](docs/04-reference/09-case-studies.md)
+（断线浮空 / 拍点和弦 / 雨滴拟物 / 光柱 / 扇阵 / 速度视差）；
+note 轨迹与 3D 的系统做法：[编排手册](docs/04-reference/11-note-and-line-choreography.md)。
 横向基准：[9 张谱的量化体检](docs/04-reference/05-cross-chart-benchmarks.md)
 （Tap/Drag 配比、帧/音符、X:Y 位移比、A/B/C/D 四档风格配置）。
 社区随机取样：[10 张高评分谱的真相](docs/04-reference/07-community-batch-scan.md)
@@ -228,3 +242,26 @@ bash tools/selfcheck.sh samples/tanchuang samples/tanchuang/_qc
 | `tools/chart_stats.py` | 横向基准体检：RPE(JSON) + PEC；排除 `isFake`；`--timeline` 看时间分布 |
 | `tools/phira_community.py` | 社区谱面搜索 / 下载 / 批量取样 |
 | `tools/package_chart.sh` | 打包成可导入的 zip |
+
+**技法与手感词典**（双压 / 轮指 / 纵连 / 阶梯 / 锁指交互 / 滑条带 / 反向音符 /
+音节驱动 / 歌词同步 / 判定线姿态 / 段落密度模板）：
+[`docs/04-reference/08-pattern-lexicon.md`](docs/04-reference/08-pattern-lexicon.md)
+
+**高分谱案例拆解**（断线浮空 / 音符代替判定线 / 扫线 / 频闪 / 双线轮班 /
+天顶线 / 蛇形 Drag / 音画同步的逐秒配方）：
+[`docs/04-reference/09-case-studies.md`](docs/04-reference/09-case-studies.md)
+
+**note 与线的"活法"**（发射器线 / 线即轨迹 / 拟物化 / 光柱 / 速度视差 /
+扇阵 / 线框空间 / 叠音接音）：
+[`docs/04-reference/11-note-and-line-choreography.md`](docs/04-reference/11-note-and-line-choreography.md)
+· 案例：[`10-case-shiluozhiyu.md`](docs/04-reference/10-case-shiluozhiyu.md)
+
+**审美契约**（一条演奏线 / Lv12–13 / 几何美 / 3D 参与演奏 / 歌词时限）：
+[`docs/03-workflow/06-art-contract.md`](docs/03-workflow/06-art-contract.md)
+
+**曲源与皮肤**（Otter Music / PrprBako / 资源包结构 / 高潮换材质）：
+[`docs/05-resources/02-asset-sources.md`](docs/05-resources/02-asset-sources.md)
+
+**真机验证**（Phira 下载 / Xvfb / 谱面目录 / 黑屏坑）：
+[`docs/06-qc/03-real-engine.md`](docs/06-qc/03-real-engine.md)
+

@@ -200,32 +200,42 @@
 
 ### 5.2 缓动序号（Easing）
 
-来源：[Phigros 自制谱 Wiki · 缓动](https://pgrfm.miraheze.org/wiki/%E7%BC%93%E5%8A%A8)
+来源：[Phira Docs · RPE 扩展特性 · easingType](https://teamflos.github.io/phira-docs/en/chart-standard/chart-format/rpe/extend.html)
 
-| 序号 | 含义 |
-|---|---|
-| 0 | fixed（阶跃，无过渡） |
-| 1 | linear（线性） |
-| 2 | easeInSine |
-| 3 | easeOutSine |
-| 4 | easeInQuad |
-| 5 | easeOutQuad |
-| 6 | easeInOutSine |
-| 7 | easeInOutQuad |
-| 8 | easeInCubic |
-| 9 | easeOutCubic |
-| 10 | easeInQuart |
-| 11 | easeOutQuart |
-| 12 | easeInOutCubic |
-| 13 | easeInOutQuart |
-| 14+ | Quint / Expo / Circ / Back / Elastic / Bounce 系列 |
+> ⚠️ Phira 里存在**两套编号**，不要混用：
+> `easingType`（判定线事件 / extendedEvent 使用，下表）与旧版 `easing`
+> （部分字段使用，0=Linear、1=InSine…）编号不同。本文档讨论判定线事件时一律指 `easingType`。
+
+| 序号 | 含义 | 序号 | 含义 |
+|---|---|---|---|
+| 1 | Linear | 16 | OutExpo |
+| 2 | **OutSine** | 17 | InExpo |
+| 3 | **InSine** | 18 | OutCirc |
+| 4 | **OutQuad** | 19 | InCirc |
+| 5 | **InQuad** | 20 | OutBack |
+| 6 | InOutSine | 21 | InBack |
+| 7 | InOutQuad | 22 | InOutCirc |
+| 8 | **OutCubic** | 23 | InOutBack |
+| 9 | **InCubic** | 24 | OutElastic |
+| 10 | OutQuart | 25 | InElastic |
+| 11 | InQuart | 26 | OutBounce |
+| 12 | InOutCubic | 27 | InBounce |
+| 13 | InOutQuart | 28 | InOutBounce |
+| 14 | OutQuint | 29 | InOutElastic |
+| 15 | InQuint | 0 | fixed（阶跃） |
 
 **实践建议**：
 - 拍点跳动、瞬间切换 → `0` 或 `1`
-- 平滑移动 / 缓动飘落 → `1`（线性）配合高频关键帧，或 `3` / `5` 缓出
-- 呼吸感振荡 → 用线性事件拼正弦，不要指望缓动能做出循环
+- 平滑飘落 / 呼吸 → `2`（OutSine）、`6`（InOutSine）
+- 判定线"甩"到新姿态 → `8`（OutCubic）或 `12`（InOutCubic）
+- 竖线 / 门 / 落月这类**需要"啪"一下立住**的动作 → `20`（OutBack，自带过冲回弹）
+- 结尾加速下坠 → `17`（InExpo）；光环扩散 → `16`（OutExpo）
+- 长距离匀速转圈（如整圈旋转）→ `12`，比纯线性更有起落
 
-> 官谱 JSON 里几乎只有线性缓动，非线性效果靠"大量线性关键帧"拟合。**高频线性关键帧 > 一个长非线性事件**，这是演出感的关键差别。
+> 官方 JSON 里官谱多用线性缓动，非线性靠密集关键帧拟合；
+> 但 **单个长事件 + 正确缓动** 在 Phira 实机里同样成立，且文件更小。
+> 关键是**编号必须对**，否则"缓出"会被引擎读成"缓入"，动作会在末尾突然撞停。
+
 
 ## 6. notes（音符）
 

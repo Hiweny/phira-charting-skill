@@ -541,6 +541,10 @@ def _check_note(li: int, ni: int, n: Any, stats: Dict[str, Any]) -> None:
 
     if "alpha" in n and (not is_int(n["alpha"]) or not (0 <= n["alpha"] <= 255)):
         ERRORS.append(f"{where}.alpha 必须是 0~255 的整数")
+    elif "alpha" in n and is_int(n["alpha"]) and n["alpha"] <= 10 and not n.get("isFake", 0):
+        WARNINGS.append(
+            f"{where} 是真 note 但 alpha={n['alpha']}，玩家看不见却会被判定"
+        )
     if "speed" in n and not is_number(n["speed"]):
         ERRORS.append(f"{where}.speed 必须是数字")
     if "visibleTime" in n and is_number(n["visibleTime"]) and n["visibleTime"] < 2:
@@ -793,7 +797,13 @@ def semantic_warnings(stats: Dict[str, Any]) -> None:
         if ratio > 0.85:
             WARNINGS.append(f"{name} 占比 {ratio:.0%}，谱面可能过于单调")
     if stats["playing_lines"] == 1:
-        WARNINGS.append("只有 1 条线承载音符，视觉表现可能单调")
+        # 单判定线是合法且常见的设计（读谱最干净）；只有连演出线都没有时才提示。
+        perf_lines = max(0, len(stats.get("line_events") or []) - stats["playing_lines"])
+        if perf_lines < 2:
+            WARNINGS.append(
+                "只有 1 条线承载音符，且没有演出线分担视觉——"
+                "建议补 2 条以上零音符演出线（六星芒 / 隧道 / 光环）"
+            )
     if stats["playing_lines"] > 6:
         WARNINGS.append("超过 6 条线承载音符，读谱难度可能过高")
     if stats.get("avg_nps") is not None and stats["avg_nps"] < 1:

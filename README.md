@@ -2,6 +2,7 @@
 
 > 一套可以直接交给 AI Agent 接手、持续迭代的 **Phira / RPE 制谱技能包**。
 > 不写死模板，只给方法、护栏和工具：**听音乐 → 对稿 → 立剧本 → 写谱 → 做演出 → 自检 → 交付**。
+> 每轮研究与被纠正都记在 [`docs/00-learning-log.md`](docs/00-learning-log.md)。
 
 ---
 
@@ -18,6 +19,10 @@
 - 想做有演出感的谱 → 读 [`docs/03-workflow/`](docs/03-workflow) 与 [`docs/04-reference/`](docs/04-reference)。
 - **不想让用户替你测试** → 读 [`docs/06-qc/02-visual-selfcheck.md`](docs/06-qc/02-visual-selfcheck.md)，跑 `tools/selfcheck.sh` 出图出视频。
 - 想偷师高手 → 用 `tools/phira_community.py` 直接下载社区高评分谱面，见 [`docs/04-reference/03-community-sampling.md`](docs/04-reference/03-community-sampling.md)。
+- 想让 note / 判定线"活过来"（任意轨迹、拟物化、3D 纵深）→ 读 [`11-note-and-line-choreography.md`](docs/04-reference/11-note-and-line-choreography.md) 与 [`10-case-shiluozhiyu.md`](docs/04-reference/10-case-shiluozhiyu.md)。
+- 先搞清主人固定的审美底线（一条演奏线 / Lv12–13 / 几何美 / 歌词时限）→ 读 [`06-art-contract.md`](docs/03-workflow/06-art-contract.md)。
+- 找歌 / 找皮肤 / 想在高潮"换材质" → 读 [`02-asset-sources.md`](docs/05-resources/02-asset-sources.md)。
+- 要在真实 Phira 里验证（皮肤、打击特效、手感）→ 读 [`03-real-engine.md`](docs/06-qc/03-real-engine.md)。
 
 ---
 
@@ -76,10 +81,10 @@ bash tools/package_chart.sh my-chart        # → my-chart.zip
 ├── docs/
 │   ├── 01-format/                # 格式规范（工程结构 / info.yml / chart.json / extra.json / 时间系统）
 │   ├── 02-pitfalls/              # ⭐ 踩坑清单 + 导入前检查表
-│   ├── 03-workflow/              # 接单对稿 → 音乐歌词情感 → 难度比例 → 写谱 → 线编排 → 特效
-│   ├── 04-reference/             # 精品谱拆解方法论 + 大师案例 + 社区取样
-│   ├── 05-resources/             # 维基、官方文档、GitHub 生态、源码导览
-│   └── 06-qc/                    # 自检流程 + 视觉自检（离屏渲染）
+│   ├── 03-workflow/              # 接单对稿 → 音乐歌词情感 → 难度比例 → 写谱 → 线编排 → 特效 → 审美契约
+│   ├── 04-reference/             # 精品谱拆解方法论 + 大师案例 + 社区取样 + note/线编排手册
+│   ├── 05-resources/             # 维基、官方文档、GitHub 生态、源码导览、曲源与皮肤
+│   └── 06-qc/                    # 自检流程 + 视觉自检（离屏渲染）+ 真机验证
 ├── tools/
 │   ├── analyze_music.py          # librosa 音乐分析
 │   ├── lyrics_align.py           # 歌词（LRC/SRT）→ beat 落点表
@@ -103,7 +108,8 @@ bash tools/package_chart.sh my-chart        # → my-chart.zip
 4. **判定线是演员，不是背景板**。80% 的视觉表现来自 line 事件编排，不是 note 本身。
 5. **和用户对稿时，把数据翻译成人话**："1:18 副歌第一下鼓砸下来"，不是"RMS 峰值 78.4s"。
 6. **别让用户替你测试**。`selfcheck.sh` 出联系表、`--video` 出视频，先自己看。
-7. **手册是护栏，不是模板**。音乐、用户意图、审美判断三者优先于文档。
+7. **只看数据会漏掉灵魂**。note 与线要合起来看：轨迹、拟物、3D、留白；本地预览不够就上真实引擎。
+8. **手册是护栏，不是模板**。音乐、用户意图、审美判断三者优先于文档。
 
 ---
 
@@ -126,9 +132,9 @@ bash tools/selfcheck.sh samples/tanchuang samples/tanchuang/_qc
 
 ## 状态
 
-- 已沉淀：RPE 170 格式与类型表、librosa 分析流水线、接单对稿协议、难度与比例规范、判定线编排方法、特效动机体系、三张精品谱深度拆解、社区取样工具、离屏渲染自检闭环。
-- 已知近似：`preview_render.py` 对父线继承、扩展事件、真实 shader 为近似实现；特效与像素级验收请走 prpr-render / phichain-renderer（见 [`02-visual-selfcheck.md`](docs/06-qc/02-visual-selfcheck.md)）。
-- 待补充：自动 note 生成算法、难度定数自动估算、更多曲风模板、CI 化的导入回归测试。
+- 已沉淀：RPE 170 格式与类型表、librosa 分析流水线、接单对稿协议、难度与比例规范、判定线编排方法、特效动机体系、**六张精品谱深度拆解**（琵琶行 / 放空 / 时落之雨 / enchanted love / 巴拉莱卡 / 社区批扫）、**note 轨迹与 3D 编排手册**、**审美契约**、**曲源与皮肤资源**、**真机验证流程**、社区取样工具、离屏渲染自检闭环。
+- 已知近似：`preview_render.py` 对父线继承、扩展事件、真实 shader 为近似实现；note alpha 已改为与判定线独立（与 Phira 一致）。特效与像素级验收请走真实 Phira 引擎（见 [`03-real-engine.md`](docs/06-qc/03-real-engine.md)）。
+- 待补充：自动 note 生成算法、难度定数自动估算、更多曲风模板、CI 化的导入回归测试、皮肤与谱面的自动配色建议。
 
 ## 参考与致谢
 
