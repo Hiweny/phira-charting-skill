@@ -66,7 +66,7 @@
 - [`11-note-and-line-choreography.md`](04-reference/11-note-and-line-choreography.md)：
   引擎位置公式、四条"活"法则、拟物配方表、五种轨迹、四种 3D、叠音/接音、参数预算。
 - [`03-workflow/06-art-contract.md`](03-workflow/06-art-contract.md)：
-  把主人的硬约束（一条演奏线 / Lv12–13 / 几何美 / 3D 参与演奏 / 歌词时限）固化。
+  把主人的硬约束（~~一条演奏线~~ 已于 2026-11-23 取消 / Lv12–13 / 几何美 / 3D 参与演奏 / 歌词时限）固化。
 
 ### 新资源
 
