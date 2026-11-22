@@ -819,6 +819,34 @@ def semantic_warnings(stats: Dict[str, Any]) -> None:
 # --------------------------------------------------------------------------
 # main
 # --------------------------------------------------------------------------
+
+def _deep_check_triples(obj: Any, label: str = "chart", limit: int = 8) -> int:
+    """递归扫描所有 beat 字段，任何 startTime/endTime/time 不是 [int,int,int] 都报 error。
+
+    这是防「invalid type: integer N, expected tuple struct Triple」的最后一道闸——
+    手写事件（尤其 colorEvents / 自定义 extended）最容易漏掉 bt()。
+    """
+    bad: List[Tuple[str, Any]] = []
+
+    def walk(o: Any, path: str) -> None:
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if k in ("startTime", "endTime", "time") and not is_triplet(v):
+                    bad.append((path + "/" + k, v))
+                walk(v, path + "/" + k)
+        elif isinstance(o, list):
+            for i, v in enumerate(o):
+                walk(v, path + "[%d]" % i)
+
+    walk(obj, label)
+    for path, v in bad[:limit]:
+        ERRORS.append("beat 三元组非法（会出现 Triple 解析错误）：%s = %r，"
+                      "需要 [整数, 整数, 整数]，请用 bt() 包装" % (path, v))
+    if len(bad) > limit:
+        ERRORS.append("……另有 %d 处同类错误未列出" % (len(bad) - limit))
+    return len(bad)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Phira / RPE 谱面校验器")
     ap.add_argument("path", help="工程目录 / chart.json / zip")
@@ -837,6 +865,9 @@ def main() -> int:
 
     check_info(info)
     stats = check_chart(chart)
+    _deep_check_triples(chart, "chart")
+    if extra:
+        _deep_check_triples(extra, "extra")
     check_extra(extra, stats)
     # RPE 1.7 会把 effects 同时写在 chart.json 顶层，这里一并校验
     chart_effects = chart.get("effects")
