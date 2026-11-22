@@ -234,6 +234,32 @@ content_end = last_time_before_tail
 
 ---
 
+## 7.7 手写事件的纪律（`colorEvents` 这类库没封装的字段）
+
+`chart_builder` 只封装了 alpha/move/rotate/speed/scale/text/paint/gif，
+**`colorEvents` 通常要手写**。手写时照抄这个模板，一个字都别省：
+
+```python
+def _ev(b0, b1, v0, v1, ease=1):
+    return {
+        "startTime": bt(b0), "endTime": bt(b1),      # ← 两个都要 bt()
+        "start": v0, "end": v1,
+        "easingType": ease, "easingLeft": 0.0, "easingRight": 1.0,
+        "bezier": 0, "bezierPoints": [0.0, 0.0, 0.0, 0.0], "linkgroup": 0,
+    }
+
+line.extended["colorEvents"] = [_ev(0, 56, [255, 255, 255], [255, 255, 255])]
+```
+
+三条铁律：
+
+1. **凡是 beat，一律 `bt()`**——包括 `endTime`、包括最后一个元素的收尾时间。
+2. **颜色是 `[r,g,b]` 数组**（0–255），不是十六进制字符串。
+3. 写完立刻 `python3 tools/validate_chart.py <dir>`；它的 `_deep_check_triples`
+   会递归翻出任何漏网的裸整数。
+
+---
+
 ## 8. 时间对齐技巧
 
 ```python
