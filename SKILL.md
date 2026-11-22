@@ -245,6 +245,7 @@ note 轨迹与 3D 的系统做法：[编排手册](docs/04-reference/11-note-and
 
 | 工具 | 用途 |
 |---|---|
+| `tools/extract_tags.py` | **先跑这个**：从音频里挖内嵌歌词（含双语翻译）与封面，识别"扩展名撒谎" |
 | `tools/analyze_music.py` | BPM / 节拍 / onset / 能量 / 结构 / 人声区段 |
 | `tools/lyrics_align.py` | 歌词（LRC/SRT）→ beat 落点表 + 建议 note 数 |
 | `tools/chart_builder.py` | 谱面构建库（`bt` / `note` / `line` / 事件封装 / `bake_curve` 烘焙 / `typewriter` / `add_paint` 光圈 / `add_gif` / `add_effect` shader） |
@@ -282,6 +283,9 @@ note 轨迹与 3D 的系统做法：[编排手册](docs/04-reference/11-note-and
 
 **曲源与皮肤**（Otter Music / PrprBako / 资源包结构 / 高潮换材质）：
 [`docs/05-resources/02-asset-sources.md`](docs/05-resources/02-asset-sources.md)
+
+**歌词向流行曲的完整实战**（文件体检 / BPM 记法双证据 / 静音尾巴 / 12 线母题复用 / 密度配方）：
+[`docs/04-reference/14-case-lyrics-pop.md`](docs/04-reference/14-case-lyrics-pop.md)
 
 **真机验证**（Phira 下载 / Xvfb / 谱面目录 / 黑屏坑）：
 [`docs/06-qc/03-real-engine.md`](docs/06-qc/03-real-engine.md)
