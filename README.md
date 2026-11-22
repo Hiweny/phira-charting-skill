@@ -22,7 +22,7 @@
 - 想让 note / 判定线"活过来"（任意轨迹、拟物化、3D 纵深）→ 读 [`11-note-and-line-choreography.md`](docs/04-reference/11-note-and-line-choreography.md) 与 [`10-case-shiluozhiyu.md`](docs/04-reference/10-case-shiluozhiyu.md)。
 - 想学颜色、节奏交互、线框空间与留白 → 读 [`12-case-shenzhendong.md`](docs/04-reference/12-case-shenzhendong.md)（《深圳东》逐帧视觉拆解）。
 - 想嵌外部图片 / GIF / 文字 / 视频 / shader → 读 [`13-media-layers.md`](docs/04-reference/13-media-layers.md)（含"皮肤单图当贴图素材"）。
-- 先搞清主人固定的审美底线（一条演奏线 / Lv12–13 / 几何美 / 歌词时限）→ 读 [`06-art-contract.md`](docs/03-workflow/06-art-contract.md)。
+- 先搞清主人固定的审美底线（多线分工 / Lv12–13 / 几何美 / 歌词时限）→ 读 [`06-art-contract.md`](docs/03-workflow/06-art-contract.md)。
 - 找歌 / 找皮肤 / 想在高潮"换材质" → 读 [`02-asset-sources.md`](docs/05-resources/02-asset-sources.md)。
 - 要在真实 Phira 里验证（皮肤、打击特效、手感）→ 读 [`03-real-engine.md`](docs/06-qc/03-real-engine.md)。
 
