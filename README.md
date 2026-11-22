@@ -11,7 +11,7 @@
 谱面不是"音符文件"，而是**随音乐播放的动态视觉作品**。
 这套技能包让 Agent 像谱师和艺术家一样工作，而不是像代码搬运工：
 
-- 想从 0 做一张能导入 Phira 的谱面 → 读 [`SKILL.md`](SKILL.md)，按九阶段流程走。
+- 想从 0 做一张能导入 Phira 的谱面 → 读 [`SKILL.md`](SKILL.md)，按十阶段流程走。
 - 拿到歌不知道从哪下手 → 读 [`docs/03-workflow/00-intake.md`](docs/03-workflow/00-intake.md)（接单与对稿）。
 - 想真正听懂音乐（节奏 / 结构 / **歌词** / **情感**）→ 读 [`docs/03-workflow/01-music-analysis.md`](docs/03-workflow/01-music-analysis.md)。
 - 想知道 RPE JSON 每个字段到底是什么类型 → 读 [`docs/01-format/`](docs/01-format)。
@@ -69,6 +69,8 @@ bash tools/package_chart.sh my-chart        # → my-chart.zip
 ⑧ 自检：validate → stats → 联系表 → 视频（不需要用户测）
    ↓
 ⑨ 交付：打包 + 说明设计意图与取舍
+   ↓
+⑩ 复盘：新手法/教训写进 learning-log，push 回仓库
 ```
 
 ---
@@ -77,7 +79,7 @@ bash tools/package_chart.sh my-chart        # → my-chart.zip
 
 ```
 .
-├── SKILL.md                      # Agent 入口：身份 / 硬规则 / 九阶段流程 / 艺术原则
+├── SKILL.md                      # Agent 入口：身份 / 硬规则 / 十阶段流程 / 艺术原则
 ├── docs/
 │   ├── 01-format/                # 格式规范（工程结构 / info.yml / chart.json / extra.json / 时间系统）
 │   ├── 02-pitfalls/              # ⭐ 踩坑清单 + 导入前检查表
