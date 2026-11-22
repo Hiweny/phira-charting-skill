@@ -37,6 +37,14 @@
   把后面所有句子的 alpha 覆盖掉（表现为"只有第一句歌词"）。逐句显式写 3 段事件。
 - `speedEvents` 不吃 `easingType`；`bpmfactor` 是 BPM **除以**它，不是乘。
 
+### 新坑（导入直接失败）
+
+- **`invalid type: integer 56, expected tuple struct Triple`**：手写 `colorEvents` 时
+  `endTime` 漏了 `bt()`，整张谱**连导入都过不去**。库里没封装的字段等于没有保护网。
+- 已补：`validate_chart.py` 新增 `_deep_check_triples`，递归扫描所有 `startTime/endTime/time`，
+  非三元组直接 error 并打印 `judgeLineList[0]/extended/colorEvents[1]/endTime = 56` 这样的路径。
+- 已补：SKILL R10（beat 必须 `bt()`）+ PITFALLS P15。
+
 ### 未解 / 下一步
 
 - [ ] 事件密度只有 2.0/音符（社区中位 3–6）：下一版用 `eventLayers` 加法层做高频呼吸，而不是继续加密主曲线
