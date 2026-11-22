@@ -138,7 +138,8 @@ iris.add_paint(9, 15, 0.0, 1500.0)          # 0 → 1500 像素，开屏
 - `0 → 1` = 让这张 GIF 完整播一遍（实测：《enchanted love》line 180，`scan.line_45deg.gif`，
   用 1.2 拍播完一次"斜向扫描线"）
 - 恒定值 = 定格在某一帧
-- 需要真实 GIF 文件；`preview_render` 目前只取首帧，看不到动画
+- 需要真实 GIF 文件；`preview_render.py` 会按 `gifEvents` 进度取帧（近似，不含播放时序细节）。
+- 媒体层总览（贴图/GIF/文字/画笔/视频/shader）见 [`13-media-layers.md`](../04-reference/13-media-layers.md)。
 
 ---
 

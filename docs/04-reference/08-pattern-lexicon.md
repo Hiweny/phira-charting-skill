@@ -378,11 +378,44 @@ N(main, F, B(bar) + 3.5, 0)
 | 叠音 / 接音 | note stacking / catcher | 同点叠多颗 / 大 Hold 当容器 | 光柱、雨柱、接雨 |
 | 背景同构 | background echo | 线的主方向 = 插画主方向 | 谱面与封面浑然一体 |
 | 交叉淡化换材质 | texture crossfade | 两条重合线 alpha 互换 | 中途"换皮肤"（谱内） |
+| 两态切换 | two-state form | 中心柱 ↔ 全屏散开交替 | 长曲结构 |
+
+---
+
+## 12. 颜色 / 节奏 / 媒体术语（《深圳东》补）
+
+| 术语 | 英文 | 做法 | 用途 |
+|---|---|---|---|
+| 类型调色盘 | type palette | Tap 蓝 / Drag 黄 / Flick 红 / Hold 白 | 不用改色就有层次 |
+| 灰阶—色差对切 | gray/chromatic call & response | `grayscale` ↔ `chromatic` 按拍交替 | 前奏、段落推进 |
+| 颜色加速 | color accelerando | `chromatic` 间隔 2 拍→1 拍→半拍 | 断点前的心跳 |
+| 消音器暗角 | vignette mute | `vignette` 压暗四周 | 留白、聚光 |
+| 故障收尾 | glitch outro | `glitch` 四连击 + 空拍 | 终章、信号中断 |
+| 速度倒吸 | reverse punch | `speed` 瞬间转负 0.5~1 s | 情绪反转、重音 |
+| 双线对打 | twin-line duel | 两条线微错位（±5°），同时出 note | 双押、加厚 |
+| 镜像对打 | mirror duel | 左右对称位置成对出 note | 双手交替、视觉平衡 |
+| 密度递增 | density ramp | 固定音高，只缩时间间隔 | 难度爬坡 |
+| 四线收束 | converging rails | 四条线从画外扫入并合拢到中心 | 合围、推进 |
+| 线接力 | line relay | 每段换一条演奏线，旧线扔出画外 | 长曲保持单演奏线 |
+| 共点星芒 | shared-origin star | 3 条线同点、每 60° 一条 | 六星芒、法阵 |
+| 角射线 | corner rays | 8 条线锚四角向中心射 | 舞台框、探照灯 |
+| 隐藏三法 | hide tricks | `moveX=114514` / `moveY=±1000` / `alpha=0` | 退场、复用线 |
+| 距离雾 | distance fog | `alphaControl` 按 note 高度衰减 | 纵深、远近 |
+| 透视缩放 | distance scale | `sizeControl` 按 note 高度缩放 | 伪 3D、隧道 |
+| 扇阵收放 | spread control | `posControl` 按距离收放 x | 呼吸、聚散 |
+| 精灵线 | sprite line | `Texture` 填图片，线变 sprite | 道具、立绘、布景 |
+| 文字线 | text line | `textEvents` 在线原点写字 | 标题、短歌词 |
+| 画笔转场 | paint iris | `paintEvents` 圆半径 0→全屏 | 转场、遮罩 |
+| 贴图视频 | attach video | `videos[].attach = 线号` | 跟线飞的屏幕/镜子 |
+| 后处理链 | effect stack | `extra.effects` 按 beat 叠加 | 调色、情绪 |
 
 > 案例中的逐秒参数与"单线复现配方"见
-> [`09-case-studies.md`](09-case-studies.md)（琵琶行 / 放空）与
-> [`10-case-shiluozhiyu.md`](10-case-shiluozhiyu.md)（时落之雨）。
+> [`09-case-studies.md`](09-case-studies.md)（琵琶行 / 放空）、
+> [`10-case-shiluozhiyu.md`](10-case-shiluozhiyu.md)（时落之雨）、
+> [`12-case-shenzhendong.md`](12-case-shenzhendong.md)（深圳东）。
 > 轨迹、拟物化、3D 的系统做法见
-> [`11-note-and-line-choreography.md`](11-note-and-line-choreography.md)。
+> [`11-note-and-line-choreography.md`](11-note-and-line-choreography.md)；
+> 图片/视频/shader 的真实字段见
+> [`13-media-layers.md`](13-media-layers.md)。
 
 

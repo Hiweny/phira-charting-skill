@@ -9,11 +9,15 @@ description: 制作 / 修改 / 校验 Phira(RPE 格式) 谱面时使用。覆盖
 谱面是**随音乐播放的动态视觉作品**——一场 3 分钟的动画演出，只是恰好可以打。
 代码只是画笔，判定线是演员，note 是节拍的可视化。
 
-> **下一个 Agent 先读这三页**：
-> [审美契约](docs/03-workflow/06-art-contract.md)（主人在多轮制谱中固化的硬约束）→
+> **下一个 Agent 先读这四页**：
+> [审美契约](docs/03-workflow/06-art-contract.md)（主人的硬约束 + 视觉/手感验收）→
 > [note 与线的编排手册](docs/04-reference/11-note-and-line-choreography.md)（轨迹/拟物/3D）→
-> [案例拆解](docs/04-reference/10-case-shiluozhiyu.md)（琵琶行 / 放空 / 时落之雨）。
+> [案例拆解](docs/04-reference/12-case-shenzhendong.md)（时落之雨 / 深圳东 / 琵琶行 / 放空）→
+> [图片·视频·Shader 手册](docs/04-reference/13-media-layers.md)（外部素材怎么接）。
 > 读完再动笔，不要从零猜。
+>
+> **制谱时牢记**：视觉与手感**只看代码看不出来**。每写完一段就渲染联系表/视频，
+> 自己先看，再交给主人。
 
 ---
 
@@ -163,13 +167,17 @@ c.save_extra("extra.json")
 |---|---|---|
 | L1 结构 | `bash tools/selfcheck.sh <dir>` | 0 error |
 | L2 指标 | `tools/preview_render.py --stats` | `hidden_notes==0`、越界 ≤2%、提前可见 ≥0.80、NPS 匹配标称 |
-| L2.5 视觉 | `contact_sheet.png` | 无全黑帧、线用满屏幕、高潮明显更密 |
+| L2.5 视觉 | `contact_sheet.png` | 无全黑帧、线用满屏幕、高潮明显更密、相邻帧不同构图 |
 | L3 运动 | `--video` 关键段 + 逐帧看 | 下落方向一致、无黏线/闪现、转场有事件 |
+| L3.5 媒体 | 贴图/文字/视频/shader 抽帧 | 贴图不挡 note、文字按时消失、shader 卡乐句 |
 | L4 真机 | Phira 本体导入 zip | 皮肤/打击特效/掉帧/手感 |
 
 L4 的做法（下载 Phira、无显示器环境、谱面放哪、已知黑屏坑）：
 [`docs/06-qc/03-real-engine.md`](docs/06-qc/03-real-engine.md)。
 本地预览只验证结构与构图；**观感与手感必须过真机**。
+
+> **制谱过程中就要看图**，不要写完才自检。
+> 每完成一个段落，立刻用 `--contact-sheet` 抽 6–10 帧；不合格当场改。
 
 关键段视频例子：
 
@@ -191,13 +199,16 @@ bash tools/selfcheck.sh samples/tanchuang samples/tanchuang/_qc
 
 **先看画面（联系表），再看结构（代码），最后对指标。** 只看代码学不会演出。
 四条线形态（普通/文字/光圈/贴图）与 shader 特效：
-[`docs/01-format/06-line-kinds-and-effects.md`](docs/01-format/06-line-kinds-and-effects.md)。
+[`docs/01-format/06-line-kinds-and-effects.md`](docs/01-format/06-line-kinds-and-effects.md)，
+真实字段与配方：[`13-media-layers.md`](docs/04-reference/13-media-layers.md)。
 已拆解案例：[《enchanted love》— 谱面即舞台剧](docs/04-reference/04-case-enchanted-love.md)
 （287 条图片判定线、101 张贴图、零 shader）、
 [《巴拉莱卡》— 零素材的几何演出](docs/04-reference/06-case-balalaika.md)
 （43 条默认线、0 贴图、147 帧/秒、视频层）。
 [《琵琶行》/《放空》/《时落之雨》逐秒拆解](docs/04-reference/09-case-studies.md)
-（断线浮空 / 拍点和弦 / 雨滴拟物 / 光柱 / 扇阵 / 速度视差）；
+（断线浮空 / 拍点和弦 / 雨滴拟物 / 光柱 / 扇阵 / 速度视差）、
+[《深圳东》— 颜色、节奏交互与线框空间](docs/04-reference/12-case-shenzhendong.md)
+（grayscale/chromatic 对切、双线对打、四线收束、共点星芒、114514 隐藏）；
 note 轨迹与 3D 的系统做法：[编排手册](docs/04-reference/11-note-and-line-choreography.md)。
 横向基准：[9 张谱的量化体检](docs/04-reference/05-cross-chart-benchmarks.md)
 （Tap/Drag 配比、帧/音符、X:Y 位移比、A/B/C/D 四档风格配置）。
@@ -257,7 +268,16 @@ note 轨迹与 3D 的系统做法：[编排手册](docs/04-reference/11-note-and
 [`docs/04-reference/11-note-and-line-choreography.md`](docs/04-reference/11-note-and-line-choreography.md)
 · 案例：[`10-case-shiluozhiyu.md`](docs/04-reference/10-case-shiluozhiyu.md)
 
-**审美契约**（一条演奏线 / Lv12–13 / 几何美 / 3D 参与演奏 / 歌词时限）：
+**颜色 / 节奏交互 / 线框空间**（两态结构 / 灰阶—色差对切 / 双线对打 /
+镜像对打 / 密度递增 / 四线收束 / 共点星芒 / 114514 隐藏）：
+[`docs/04-reference/12-case-shenzhendong.md`](docs/04-reference/12-case-shenzhendong.md)
+
+**图片 / 视频 / Shader**（贴图线 / GIF / 文字线 / 画笔转场 / attach 视频 /
+10 个内置后处理 / 自定义 GLSL / 素材尺寸与图层）：
+[`docs/04-reference/13-media-layers.md`](docs/04-reference/13-media-layers.md)
+
+**审美契约**（一条演奏线 / Lv12–13 / 几何美 / 3D 参与演奏 / 歌词时限 /
+视觉与手感验收）：
 [`docs/03-workflow/06-art-contract.md`](docs/03-workflow/06-art-contract.md)
 
 **曲源与皮肤**（Otter Music / PrprBako / 资源包结构 / 高潮换材质）：

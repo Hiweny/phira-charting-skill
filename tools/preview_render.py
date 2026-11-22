@@ -56,11 +56,16 @@ SPEED_RATIO = 10.0 / 45.0 / HEIGHT_RATIO   # ≈ 0.2671
 
 TEXT_PX = 26.0                     # 文字线字号（逻辑像素，prpr 固定不可调）
 
+# prpr/src/core.rs: NOTE_WIDTH_RATIO_BASE = 0.13175016
+# draw_center 的 dest_size = 2 * scale，所以音符全宽约 0.2635 个世界单位。
+NOTE_W_WORLD = 0.2635
+LINE_LEN_DEFAULT = 6.0             # info.yml lineLength 缺省值（世界单位）
+
 NOTE_COLORS = {
-    1: (96, 210, 255),     # Tap  青
-    2: (255, 214, 92),     # Hold 黄
-    3: (255, 92, 110),     # Flick 红
-    4: (255, 176, 60),     # Drag 橙
+    1: (75, 160, 229),     # Tap  默认皮肤 click.png
+    2: (228, 238, 250),    # Hold 默认皮肤 hold.png（近白）
+    3: (213, 30, 30),      # Flick 默认皮肤 flick.png
+    4: (228, 196, 66),     # Drag 默认皮肤 drag.png
 }
 NOTE_NAMES = {1: "Tap", 2: "Hold", 3: "Flick", 4: "Drag"}
 
@@ -359,7 +364,38 @@ def _duration(chart: dict, proj: Project) -> float:
 class Ctl:
     """posControl / alphaControl / yControl / sizeControl / skewControl 求值。"""
 
-    DEFAULT = {"pos": 0.0, "alpha": 1.0, "y": 0.0, "size": 1.0, "skew": 0.0}
+    DEFAULT = {"pos": 1.0, "alpha": 1.0, "y": 1.0, "size": 1.0, "skew": 0.0}
+
+    @staticmethod
+    def at_x(entries: list[dict] | None, key: str, x: float) -> float:
+        """按 note 的行进高度（RPE 像素）求值，而不是按时间。
+
+        prpr 的 `CtrlObject::set_height` 把 alpha/size/pos/y 控制事件绑在
+        **音符离判定线的距离**上：越远的 note 用越靠后的关键帧。
+        这正是"距离雾 / 透视缩放 / 扇阵收放"能实现的原因。
+        """
+        d = Ctl.DEFAULT.get(key, 1.0)
+        if not entries:
+            return d
+        pts = []
+        for e in entries:
+            kx = float(e.get("x", 0))
+            if kx > 9e6:
+                continue
+            pts.append((kx, float(e.get(key, d)), int(e.get("easing", 1))))
+        if not pts:
+            return d
+        pts.sort(key=lambda p: p[0])
+        if x <= pts[0][0]:
+            return pts[0][1]
+        for i in range(len(pts) - 1):
+            x0, v0, es = pts[i]
+            x1, v1, _ = pts[i + 1]
+            if x0 <= x <= x1:
+                if x1 - x0 <= 1e-9:
+                    return v1
+                return lerp(v0, v1, ease(es, (x - x0) / (x1 - x0)))
+        return pts[-1][1]
 
     @staticmethod
     def value(entries: list[dict] | None, key: str, t_sec: float, timing: Timing) -> float:
@@ -651,6 +687,21 @@ def _fit_cover(img: Image.Image, w: int, h: int) -> Image.Image:
     return img.crop((x, y, x + w, y + h))
 
 
+def _fit_screen(img: Image.Image, w: int, h: int, mode: str) -> Image.Image:
+    """prpr ScaleType：cropCenter=铺满裁剪；inside=完整放入；fit=拉伸铺满。"""
+    mode = (mode or "cropCenter").lower()
+    if mode == "fit":
+        return img.resize((w, h), Image.LANCZOS)
+    iw, ih = img.size
+    if mode == "inside":
+        s = min(w / iw, h / ih)
+        out = img.resize((max(1, int(iw * s)), max(1, int(ih * s))), Image.LANCZOS)
+        canvas = Image.new("RGB", (w, h), (0, 0, 0))
+        canvas.paste(out, ((w - out.width) // 2, (h - out.height) // 2))
+        return canvas
+    return _fit_cover(img, w, h)
+
+
 def _rot(x: float, y: float, deg: float) -> tuple[float, float]:
     r = math.radians(deg)
     c, s = math.cos(r), math.sin(r)
@@ -671,6 +722,7 @@ class Renderer:
         self.duration = _duration(chart, proj)
         self.offset = float(m.get("offset") or proj.info.get("offset") or 0.0) / 1000.0
         self.bg_dim = float(proj.info.get("backgroundDim") or 0.6)
+        self.line_len = float(proj.info.get("lineLength") or LINE_LEN_DEFAULT)
         self.bg = None
         if proj.illustration and proj.illustration.exists():
             try:
@@ -696,6 +748,7 @@ class Renderer:
                             "size": float(n.get("size", 1.0)) or 1.0,
                             "speed": float(n.get("speed", 1.0)) or 1.0,
                             "yoff": float(n.get("yOffset", 0)) or 0.0,
+                            "visible": float(n.get("visibleTime", 999999)) or 999999.0,
                         }
                     )
                 except Exception:  # noqa: BLE001
@@ -709,6 +762,8 @@ class Renderer:
         self.effects.sort(key=lambda x: x["t0"])
         self._tex_cache: dict[str, Image.Image | None] = {}
         self._tex_scaled: dict[tuple, Image.Image] = {}
+        self.videos = self._parse_videos(proj.extra)
+        self._vid_cache: dict[tuple, Image.Image | None] = {}
         self.texture_lines = sum(1 for L in self.lines if (L.get("Texture") or "").strip())
 
     # -- 贴图（RPE 1.6 图片判定线）--
@@ -751,6 +806,97 @@ class Renderer:
         if p < 0:
             p = 0.0
         return int(round(max(0.0, min(1.0, p)) * (n - 1)))
+
+    # -- 视频图层（extra.json videos，prpr feature=video）--
+    def _parse_videos(self, extra: dict | None) -> list[dict]:
+        out = []
+        for v in (extra or {}).get("videos") or []:
+            try:
+                t0 = self.timing.sec(v.get("time") or [0, 0, 1])
+            except Exception:  # noqa: BLE001
+                t0 = 0.0
+            st = (v.get("scale") or "cropCenter")
+            if isinstance(st, dict):
+                st = st.get("type", "cropCenter")
+            out.append({"path": v.get("path") or "", "t0": t0, "scale": st,
+                        "alpha": v.get("alpha", 1.0), "dim": v.get("dim", 0.0),
+                        "attach": v.get("attach")})
+        return out
+
+    def _anim_value(self, v, t: float, default: float) -> float:
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, list) and v and isinstance(v[0], dict):
+            return Ctl.value(v, "value", t, self.timing)
+        return default
+
+    def video_frame(self, path: str, rel_t: float):
+        """用 ffmpeg 按需抽帧（0.1s 缓存）；没有 ffmpeg 则返回 None。"""
+        key = (path, round(rel_t, 1))
+        if key in self._vid_cache:
+            return self._vid_cache[key]
+        if len(self._vid_cache) > 120:
+            self._vid_cache.clear()
+        src = self.proj.root / path
+        img = None
+        if src.exists() and shutil.which("ffmpeg"):
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                    tmp = f.name
+                r = subprocess.run(
+                    ["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{max(0.0, rel_t):.3f}",
+                     "-i", str(src), "-frames:v", "1", tmp],
+                    capture_output=True, timeout=20,
+                )
+                if r.returncode == 0:
+                    img = Image.open(tmp).convert("RGB")
+                os.unlink(tmp)
+            except Exception:  # noqa: BLE001
+                img = None
+        self._vid_cache[key] = img
+        return img
+
+    def draw_videos(self, img: Image.Image, t: float) -> Image.Image:
+        """videos：attach 为空时全屏；attach=线号时跟随该线的位姿（近似）。"""
+        if not self.videos:
+            return img
+        for v in self.videos:
+            rel = t - v["t0"]
+            if rel < 0:
+                continue
+            frame = self.video_frame(v["path"], rel)
+            if frame is None:
+                continue
+            mode = str(v.get("scale") or "cropCenter")
+            if v.get("attach") is not None:
+                try:
+                    li = int(v["attach"])
+                except (TypeError, ValueError):
+                    li = -1
+                if 0 <= li < len(self.lines):
+                    x, y, rot, _a, size = self.line_state(self.lines[li], t)
+                    layer = _fit_screen(frame, self.w, self.h, mode)
+                    k = max(0.05, size)
+                    layer = layer.resize((max(1, int(self.w * k)), max(1, int(self.h * k))), Image.BILINEAR)
+                    layer = layer.rotate(rot, resample=Image.BICUBIC, expand=False,
+                                         center=(layer.width / 2, layer.height / 2))
+                    base = Image.new("RGBA", (self.w, self.h), (0, 0, 0, 0))
+                    cx, cy = (HALF_W + x) * self.sx, (HALF_H - y) * self.sy
+                    base.paste(layer, (int(cx - layer.width / 2), int(cy - layer.height / 2)), layer)
+                    frame = base.convert("RGB")
+                else:
+                    frame = _fit_screen(frame, self.w, self.h, mode)
+            else:
+                frame = _fit_screen(frame, self.w, self.h, mode)
+            alpha = max(0.0, min(1.0, self._anim_value(v.get("alpha"), t, 1.0)))
+            dim = max(0.0, min(1.0, self._anim_value(v.get("dim"), t, 0.0)))
+            if alpha <= 0.01:
+                continue
+            arr = frame.convert("RGB")
+            if dim > 0:
+                arr = Image.blend(arr, Image.new("RGB", arr.size, (0, 0, 0)), dim)
+            img = Image.blend(img.convert("RGB"), arr, alpha)
+        return img
 
     def _scaled_tex(self, name: str, sx: float, sy: float, frame: int = 0):
         src = self.tex_image(name, frame)
@@ -815,12 +961,12 @@ class Renderer:
             return False
         x, y, rot, a, size = st
         gframe = self.gif_frame_index(L, t)
-        base = self._scaled_tex(name, size, size, gframe)
-        if base is None:
-            return False
+        # prpr：贴图线 scale = 事件值 * 2 / RPE_WIDTH（世界单位）；
+        # 世界单位 → 预览像素是 w/2，所以源图像素 × w/1350。
+        k = self.w / RPE_W
         sx = _ext_scalar(L, "scaleXEvents", t, self.timing, 1.0)
         sy = _ext_scalar(L, "scaleYEvents", t, self.timing, 1.0)
-        sprite = self._scaled_tex(name, size * sx, size * sy, gframe)
+        sprite = self._scaled_tex(name, size * k, sy * k, gframe)
         if sprite is None:
             return False
 
@@ -859,17 +1005,27 @@ class Renderer:
 
     # -- 状态求值 --
     def line_state(self, L: dict, t: float):
-        x = Ctl.value(L.get("posControl"), "pos", t, self.timing)
-        y = Ctl.value(L.get("yControl"), "y", t, self.timing)
-        size = Ctl.value(L.get("sizeControl"), "size", t, self.timing) or 1.0
-        base_alpha = Ctl.value(L.get("alphaControl"), "alpha", t, self.timing)
-        x += _layers_sum(L, "moveXEvents", t, self.timing)
-        y += _layers_sum(L, "moveYEvents", t, self.timing)
+        """线的位姿。
+
+        RPE 的 posControl / sizeControl / alphaControl / yControl **不是线的属性**，
+        而是"线上所有音符"的属性（按音符行进距离求值，见 Ctl.at_x），
+        这里绝不能拿来改线本身，否则整条线会错误平移/缩放。
+        """
+        x = _layers_sum(L, "moveXEvents", t, self.timing)
+        y = _layers_sum(L, "moveYEvents", t, self.timing)
         rot = -_layers_sum(L, "rotateEvents", t, self.timing)
-        if base_alpha > 1.5:
-            base_alpha /= 255.0
-        alpha = max(0.0, min(1.0, base_alpha)) * _layers_alpha(L, t, self.timing)
-        return x, y, rot, alpha, abs(size)
+        size = abs(_ext_scalar(L, "scaleXEvents", t, self.timing, 1.0))
+        alpha = _layers_alpha(L, t, self.timing)
+        return x, y, rot, alpha, size
+
+    def note_ctrl(self, ni: int, dist: float) -> tuple[float, float, float, float]:
+        """按距离求 ctrl：返回 (alpha, size, pos, y)。"""
+        L = self.lines[self.notes[ni]["line"]]
+        a = Ctl.at_x(L.get("alphaControl"), "alpha", abs(dist))
+        s = Ctl.at_x(L.get("sizeControl"), "size", abs(dist))
+        p = Ctl.at_x(L.get("posControl"), "pos", abs(dist))
+        yy = Ctl.at_x(L.get("yControl"), "y", abs(dist))
+        return a, s, p, (yy if abs(yy) > 1e-6 else 1.0)
 
     def note_pos(self, ni: int, t: float, st, hit_t: float | None = None):
         """t = 当前画面时间；hit_t = 该 note（或 Hold 尾）的判定时间。"""
@@ -877,11 +1033,14 @@ class Renderer:
         lx, ly, rot, la, lsize = st
         H = self._speed[n["line"]]
         hit = n["t"] if hit_t is None else hit_t
-        dist = (H.H(hit) - H.H(t)) * HALF_H * n["speed"] * self.speed_mul
-        # RPE/Phira: above=1 正面下落；above=2 反向；其余按下落处理
-        sign = -1.0 if n["above"] == 2 else 1.0
-        rel_x = n["x"] - lx
-        rel_y = sign * max(0.0, dist) + n["yoff"]
+        raw = (H.H(hit) - H.H(t)) * HALF_H * n["speed"]
+        _ca, _cs, cpos, cy = self.note_ctrl(ni, raw * self.speed_mul)
+        dist = raw / cy * self.speed_mul
+        # RPE 的 positionX 是相对判定线中心的坐标；prpr 里先平移到 (x, height)
+        # 再叠加线自身的平移与旋转。这里不能减去线坐标（那会二次平移）。
+        rel_x = n["x"] * cpos
+        # above 在 Phira 的 RPE 解析里只影响粒子朝向，不影响下落方向。
+        rel_y = max(0.0, dist) + n["yoff"]
         rx, ry = _rot(rel_x, rel_y, rot)
         wx, wy = lx + rx, ly + ry
         px = (HALF_W + wx) * self.sx
@@ -895,6 +1054,8 @@ class Renderer:
         if self.bg:
             img.paste(self.bg)
             img = ImageEnhance.Brightness(img).enhance(max(0.05, 1.0 - self.bg_dim))
+        # videos 在 prpr 里先于判定线与音符绘制
+        img = self.draw_videos(img, t)
         draw = ImageDraw.Draw(img, "RGBA")
 
         # 判定线（有 Texture 的按图片图层画，其余画线）
@@ -915,51 +1076,84 @@ class Renderer:
                     continue
             elif self.draw_texture(img, L, states[li], t):
                 continue
-            length = RPE_W * max(0.05, size)
+            length = self.line_len * HALF_W * max(0.05, size) * 2
             dx, dy = _rot(length / 2, 0, rot)
             cx, cy = (HALF_W + x) * self.sx, (HALF_H - y) * self.sy
-            col = (200, 220, 255, int(170 * a))
+            # 默认判定线色 = respack.info.color_perfect（0xe1ffec9f）→ 暖白；
+            # colorEvents 支持时直接覆盖线色（prpr parse: line.color）。
+            if ex.get("colorEvents"):
+                _cr, _cg, _cb = _ext_color(L, t, self.timing)
+                col = (int(255 * _cr), int(255 * _cg), int(255 * _cb), int(255 * a))
+            else:
+                col = (255, 236, 159, int(225 * a))
+            thick = 0.0076 if abs(size - 1.0) > 1e-4 else 0.01
             draw.line([(cx - dx * self.sx, cy + dy * self.sy), (cx + dx * self.sx, cy - dy * self.sy)],
-                      fill=col, width=max(2, int(3 * self.sy)))
+                      fill=col, width=max(2, int(thick * HALF_W * self.sx)))
         draw = ImageDraw.Draw(img, "RGBA")   # paste 会失效旧的 draw 句柄
 
         # 音符（先画 Hold 体，再画头）
         for ni, n in enumerate(self.notes):
-            # 未到判定前 3s 内才进入画面；Tap/Flick/Drag 判定后立即消失，Hold 持续到尾
+            # visibleTime 是"提前多少秒出现"；999999 表示常显。
+            # 判定后 Tap/Flick/Drag 立即消失，Hold 持续到尾。
             t_end = n["te"] + 0.35 if n["type"] == 2 else n["t"] + 0.06
-            if not (n["t"] - 3.0 <= t <= t_end):
+            appear = n["t"] - min(3.0, max(0.0, n["visible"]))
+            if not (appear <= t <= t_end):
                 continue
             st = states[n["line"]]
-            px, py, rot, la, lsize, _dist = self.note_pos(ni, t, st)
-            if px < -200 or px > self.w + 200 or py < -300 or py > self.h + 300:
+            px, py, rot, la, lsize, dist = self.note_pos(ni, t, st)
+            if px < -300 or px > self.w + 300 or py < -300 or py > self.h + 300:
                 continue
             # RPE/Phira：判定线 alpha 只影响线本身，音符 alpha 独立。
             # 早期版本这里乘了 la，导致"透明线上的音符"在预览里假性消失，
             # 与实机（音符照常显示、照常判定）不一致。
-            a = max(0.0, min(1.0, n["alpha"]))
+            ca, cs, _cpos, _cy = self.note_ctrl(ni, abs(dist))
+            a = max(0.0, min(1.0, n["alpha"] * ca))
+            # visibleTime 生效时 Phira 会在出现点淡入
+            if n["visible"] < 999999:
+                fade = min(1.0, max(0.0, (t - appear) / 0.12))
+                a *= fade
             if a <= 0.02:
                 continue
             col = NOTE_COLORS.get(n["type"], (255, 255, 255))
-            sz = 18.0 * max(0.4, n["size"]) * self.sy
+            # prpr draw_center：dest_size = 2 * (NOTE_WIDTH_RATIO_BASE * size)
+            nw = NOTE_W_WORLD * HALF_W * self.sx * max(0.05, n["size"] * cs)
+            nwy = NOTE_W_WORLD * HALF_H * self.sy * max(0.05, n["size"] * cs)
+            nh = {"1": 0.10, "2": 0.10, "3": 0.172, "4": 0.053}.get(str(n["type"]), 0.10)
+            rot_deg = -rot
 
             if n["type"] == 2 and n["te"] > n["t"]:
                 ex, ey, _, _, _, _ = self.note_pos(ni, t, st, hit_t=n["te"])
-                draw.line([(px, py), (ex, ey)], fill=col + (int(70 * a),), width=max(2, int(sz * 0.55)))
+                # 长条本体：与头同宽的竖直条带，双端略收
+                ddx, ddy = ex - px, ey - py
+                ln = math.hypot(ddx, ddy)
+                if ln > 1:
+                    ux, uy = ddx / ln, ddy / ln
+                    nx, ny = -uy, ux
+                    hw = nw * 0.46
+                    body = [(px + nx * hw, py + ny * hw), (ex + nx * hw, ey + ny * hw),
+                            (ex - nx * hw, ey - ny * hw), (px - nx * hw, py - ny * hw)]
+                    draw.polygon(body, fill=col + (int(58 * a),))
+                    draw.line([(px + nx * hw, py + ny * hw), (ex + nx * hw, ey + ny * hw)],
+                              fill=(235, 245, 255, int(130 * a)), width=max(1, int(2 * self.sy)))
 
-            if n["type"] == 1:
-                draw.rounded_rectangle([px - sz, py - sz * 0.72, px + sz, py + sz * 0.72],
-                                       radius=int(sz * 0.45), fill=col + (int(255 * a),))
-            elif n["type"] == 2:
-                draw.rounded_rectangle([px - sz, py - sz * 0.6, px + sz, py + sz * 0.6],
-                                       radius=int(sz * 0.3), fill=col + (int(255 * a),))
-            elif n["type"] == 3:
-                draw.polygon([(px, py - sz), (px + sz * 0.9, py + sz * 0.7), (px - sz * 0.9, py + sz * 0.7)],
-                             fill=col + (int(255 * a),))
+            if n["type"] == 3:
+                # flick：宽三角 / 箭头，指向下落方向（flick.png 比例约 172:998）
+                hh = nwy * nh
+                tri_pts = [(0, -hh * 1.05), (nw * 0.5, hh * 0.95), (0, hh * 0.35), (-nw * 0.5, hh * 0.95)]
+                rs = [_rot(x, y, rot_deg) for x, y in tri_pts]
+                draw.polygon([(px + x, py + y) for x, y in rs], fill=col + (int(255 * a),))
             else:
-                draw.ellipse([px - sz * 0.55, py - sz * 0.55, px + sz * 0.55, py + sz * 0.55],
-                             fill=col + (int(230 * a),))
-                draw.ellipse([px - sz * 0.25, py - sz * 0.25, px + sz * 0.25, py + sz * 0.25],
-                             fill=(255, 255, 255, int(200 * a)))
+                hh = nwy * nh
+                rect = [(px - nw / 2, py - hh / 2), (px + nw / 2, py - hh / 2),
+                        (px + nw / 2, py + hh / 2), (px - nw / 2, py + hh / 2)]
+                if abs(rot_deg) > 0.2:
+                    rect = [(px + _rot(x - px, y - py, rot_deg)[0], py + _rot(x - px, y - py, rot_deg)[1])
+                            for x, y in rect]
+                draw.polygon(rect, fill=col + (int(255 * a),))
+                if n["type"] == 2:
+                    # Hold 头：中间加亮
+                    draw.line([(px - nw * 0.42, py), (px + nw * 0.42, py)],
+                              fill=(255, 255, 255, int(150 * a)), width=max(1, int(2 * self.sy)))
 
         img = self.apply_effects(img, t_audio)
 
@@ -1053,6 +1247,149 @@ class Renderer:
             d.ellipse([x - size, y - size, x + size, y + size], fill=(255, 255, 255, 190))
         return Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
 
+    def _fx_chromatic(self, img, eff, t):
+        """prpr chromatic.glsl：以屏幕中心为原点做径向 RGB 分离。"""
+        power = max(0.0, self._ev(eff, "power", t, 0.01))
+        if power <= 1e-5:
+            return img
+        try:
+            import numpy as np
+        except ImportError:
+            d = int(power * self.w * 0.5)
+            r, g, b = img.split()
+            return Image.merge("RGB", (
+                r.transform(r.size, Image.AFFINE, (1, 0, d, 0, 1, 0)),
+                g,
+                b.transform(b.size, Image.AFFINE, (1, 0, -d, 0, 1, 0)),
+            ))
+        a = np.asarray(img, dtype=np.float32)
+        h, w = a.shape[:2]
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
+        out = a.copy()
+        for ch, k in ((0, 1.0 + power), (2, 1.0 - power)):
+            sx = cx + (xx - cx) * k
+            sy = cy + (yy - cy) * k
+            sx0 = np.clip(np.floor(sx).astype(np.int32), 0, w - 1)
+            sy0 = np.clip(np.floor(sy).astype(np.int32), 0, h - 1)
+            out[..., ch] = a[sy0, sx0, ch]
+        return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
+
+    def _fx_vignette(self, img, eff, t):
+        """prpr vignette.glsl：从 radius 开始，向外 extend 渐变到指定颜色。"""
+        radius = max(0.0, self._ev(eff, "radius", t, 15.0)) / 100.0
+        extend = max(1e-3, self._ev(eff, "extend", t, 0.25))
+        try:
+            import numpy as np
+        except ImportError:
+            return img
+        a = np.asarray(img, dtype=np.float32)
+        h, w = a.shape[:2]
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        d = np.sqrt(((xx - w / 2) / (w / 2)) ** 2 + ((yy - h / 2) / (h / 2)) ** 2) / math.sqrt(2)
+        m = np.clip((d - radius) / extend, 0.0, 1.0)[..., None]
+        col = np.array([self._ev(eff, "r", t, 0.0), self._ev(eff, "g", t, 0.0),
+                        self._ev(eff, "b", t, 0.0)], dtype=np.float32) * 255.0
+        out = a * (1.0 - m) + col * m
+        return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
+
+    def _fx_circle_blur(self, img, eff, t):
+        """circle_blur.glsl：圆形邻域取最亮像素（近似为 MaxFilter）。"""
+        size = int(max(0, min(16, self._ev(eff, "size", t, 10.0))))
+        if size <= 0:
+            return img
+        return img.filter(ImageFilter.MaxFilter(size * 2 + 1))
+
+    def _fx_shockwave(self, img, eff, t):
+        """shockwave.glsl：一圈随时间扩散的环形折射。"""
+        span = max(1e-3, eff["t1"] - eff["t0"])
+        prog = max(0.001, min(0.999, (t - eff["t0"]) / span))
+        width = max(0.01, self._ev(eff, "width", t, 0.1))
+        dist_k = max(0.0, self._ev(eff, "distortion", t, 0.8))
+        expand = max(0.1, self._ev(eff, "expand", t, 10.0))
+        cx = self._ev(eff, "centerX", t, 0.5) * self.w
+        cy = self._ev(eff, "centerY", t, 0.5) * self.h
+        try:
+            import numpy as np
+        except ImportError:
+            return img
+        a = np.asarray(img, dtype=np.float32)
+        h, w = a.shape[:2]
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        dx, dy = xx - cx, yy - cy
+        d = np.sqrt(dx * dx + dy * dy) / max(w, h)
+        ring = np.abs(d - prog) < width
+        scale = 1.0 - np.power(np.clip(np.abs(d - prog) * expand, 0, 1), dist_k)
+        k = np.where(ring, 1.0 + 0.35 * scale, 1.0)
+        sx = np.clip(cx + dx * k, 0, w - 1).astype(np.int32)
+        sy = np.clip(cy + dy * k, 0, h - 1).astype(np.int32)
+        out = a[sy, sx]
+        return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
+
+    def _fx_radial_blur(self, img, eff, t):
+        """radial_blur.glsl：向中心做缩放模糊。"""
+        power = max(0.0, min(0.2, self._ev(eff, "power", t, 0.02)))
+        n = int(max(2, min(12, self._ev(eff, "sampleCount", t, 6))))
+        cx = self._ev(eff, "centerX", t, 0.5) * self.w
+        cy = self._ev(eff, "centerY", t, 0.5) * self.h
+        base = img
+        acc = None
+        for i in range(n):
+            k = 1.0 - power * i
+            w2, h2 = max(1, int(self.w * k)), max(1, int(self.h * k))
+            z = base.resize((w2, h2), Image.BILINEAR)
+            canvas = Image.new("RGB", (self.w, self.h), (0, 0, 0))
+            canvas.paste(z, (int(cx - cx * k), int(cy - cy * k)))
+            acc = canvas if acc is None else Image.blend(acc, canvas, 1.0 / (i + 1))
+        return acc or img
+
+    def _fx_pixel(self, img, eff, t):
+        """pixel.glsl：按块大小做马赛克。"""
+        size = max(1.0, self._ev(eff, "size", t, 10.0))
+        sw = max(1, int(self.w / size))
+        sh = max(1, int(self.h / size))
+        return img.resize((sw, sh), Image.BILINEAR).resize((self.w, self.h), Image.NEAREST)
+
+    def _fx_noise(self, img, eff, t):
+        """noise.glsl：按 seed 做逐像素偏移。"""
+        power = max(0.0, self._ev(eff, "power", t, 0.03))
+        seed = self._ev(eff, "seed", t, 81.0)
+        try:
+            import numpy as np
+        except ImportError:
+            return img
+        a = np.asarray(img, dtype=np.uint8)
+        h, w = a.shape[:2]
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        r = np.sin((xx + seed) * 12.9898 + yy * 78.233) * 43758.5453
+        r = r - np.floor(r)
+        sx = np.clip((xx + (r - 0.5) * 6.0).astype(np.int32), 0, w - 1)
+        sy = np.clip((yy + (r - 0.5) * 6.0).astype(np.int32), 0, h - 1)
+        return Image.fromarray(a[sy, sx])
+
+    def _fx_fisheye(self, img, eff, t):
+        """fisheye.glsl：桶形/枕形畸变。"""
+        power = self._ev(eff, "power", t, -0.1)
+        if abs(power) < 1e-4:
+            return img
+        try:
+            import numpy as np
+        except ImportError:
+            return img
+        a = np.asarray(img, dtype=np.uint8)
+        h, w = a.shape[:2]
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        nx = (xx - w / 2) / (h / 2)
+        ny = (yy - h / 2) / (h / 2)
+        r = np.sqrt(nx * nx + ny * ny)
+        if power > 0:
+            f = np.tan(np.minimum(r * power, 1.4)) / np.maximum(r, 1e-5) * (r / max(1e-5, np.tan(min(1.4, power))))
+        else:
+            f = np.arctan(r * -power * 10.0) / np.maximum(r, 1e-5) / max(1e-5, np.arctan(-power * 10.0))
+        sx = np.clip(nx * f * (h / 2) + w / 2, 0, w - 1).astype(np.int32)
+        sy = np.clip(ny * f * (h / 2) + h / 2, 0, h - 1).astype(np.int32)
+        return Image.fromarray(a[sy, sx])
+
     def apply_effects(self, img: Image.Image, t: float) -> Image.Image:
         act = [e for e in self.effects if e["t0"] <= t <= e["t1"]]
         if not act:
@@ -1068,35 +1405,23 @@ class Renderer:
             elif "snow" in name:
                 img = self._fx_snow(img, eff, t)
             elif "chromatic" in name:
-                r, g, b = img.split()
-                img = Image.merge("RGB", (r.transform(r.size, Image.AFFINE, (1, 0, 4, 0, 1, 0)),
-                                          g,
-                                          b.transform(b.size, Image.AFFINE, (1, 0, -4, 0, 1, 0))))
+                img = self._fx_chromatic(img, eff, t)
             elif "glitch" in name:
-                d = ImageDraw.Draw(img, "RGBA")
-                rnd = random.Random(int(t * 30))
-                for _ in range(6):
-                    y = rnd.randrange(0, self.h)
-                    hh = rnd.randrange(2, 14)
-                    x = rnd.randrange(-40, 40)
-                    strip = img.crop((0, y, img.width, min(self.h, y + hh)))
-                    img.paste(strip, (x, y))
-                d.rectangle([0, 0, self.w, self.h], outline=(255, 0, 80, 10))
+                img = self._fx_glitch(img, eff, t)
             elif "vignette" in name:
-                v = Image.new("L", (self.w, self.h), 0)
-                vd = ImageDraw.Draw(v)
-                vd.ellipse([-self.w * 0.25, -self.h * 0.25, self.w * 1.25, self.h * 1.25], fill=255)
-                v = v.filter(ImageFilter.GaussianBlur(120))
-                black = Image.new("RGB", (self.w, self.h), (0, 0, 0))
-                img = Image.composite(img, black, v)
+                img = self._fx_vignette(img, eff, t)
+            elif "circle" in name and "blur" in name:
+                img = self._fx_circle_blur(img, eff, t)
+            elif "radial" in name and "blur" in name:
+                img = self._fx_radial_blur(img, eff, t)
             elif "shockwave" in name:
-                e = next((x for x in self.effects if x["t0"] <= t <= x["t1"] and "shockwave" in x["shader"]), None)
-                if e:
-                    p = (t - e["t0"]) / max(1e-3, e["t1"] - e["t0"])
-                    rad = 60 + p * self.w * 0.9
-                    d = ImageDraw.Draw(img, "RGBA")
-                    d.ellipse([self.w / 2 - rad, self.h / 2 - rad, self.w / 2 + rad, self.h / 2 + rad],
-                              outline=(255, 255, 255, int(120 * (1 - p))), width=3)
+                img = self._fx_shockwave(img, eff, t)
+            elif "pixel" in name:
+                img = self._fx_pixel(img, eff, t)
+            elif "noise" in name:
+                img = self._fx_noise(img, eff, t)
+            elif "fisheye" in name:
+                img = self._fx_fisheye(img, eff, t)
             elif "flare" in name:
                 overlay = Image.new("RGBA", (self.w, self.h), (0, 0, 0, 0))
                 d = ImageDraw.Draw(overlay)
@@ -1104,6 +1429,36 @@ class Renderer:
                           fill=(255, 240, 200, 40))
                 img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
         return img
+
+    def _fx_glitch(self, img, eff, t):
+        """glitch.glsl：随机行块位移 + RGB 错位。"""
+        power = max(0.0, self._ev(eff, "power", t, 0.03))
+        rate = max(0.0, min(1.0, self._ev(eff, "rate", t, 0.6)))
+        speed = max(0.1, self._ev(eff, "speed", t, 5.0))
+        blocks = max(2.0, self._ev(eff, "blockCount", t, 30.5))
+        color_rate = max(0.0, self._ev(eff, "colorRate", t, 0.01))
+        rnd = random.Random(int(t * speed * 1000))
+        if rnd.random() > rate:
+            return img
+        out = img.copy()
+        d = ImageDraw.Draw(out, "RGBA")
+        band_h = max(2, int(self.h / blocks))
+        for i in range(int(blocks)):
+            if rnd.random() > rate * 0.5:
+                continue
+            y = i * band_h
+            shift = int((rnd.random() - 0.5) * power * self.w * 2)
+            if shift == 0:
+                continue
+            strip = img.crop((0, y, self.w, min(self.h, y + band_h)))
+            out.paste(strip, (shift, y))
+        r, g, b = out.split()
+        dx = max(1, int(color_rate * self.w))
+        return Image.merge("RGB", (
+            r.transform(r.size, Image.AFFINE, (1, 0, dx, 0, 1, 0)),
+            g,
+            b.transform(b.size, Image.AFFINE, (1, 0, -dx, 0, 1, 0)),
+        ))
 
     def draw_hud(self, img, draw, t):
         b = self.timing.beat_at(t)

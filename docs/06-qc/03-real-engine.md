@@ -122,18 +122,54 @@ ERROR phira{err=add renderer ... buffer is full}: global error
 
 ---
 
-## 6. 本地预览器的定位与已知修正
+## 6. 本地预览器的定位与已对齐项
 
-`tools/preview_render.py` 是"结构与构图"工具，不是渲染器。已修正一处关键语义：
+`tools/preview_render.py` 是"结构 / 构图 / 运动"工具，不是像素级渲染器。
+2026-11-22 已按 prpr 源码做了一轮语义对齐：
 
-- **旧行为**：note alpha 乘上了判定线 alpha → 透明线上的音符在预览里假性消失。
-- **现行为**：note alpha 独立（与 Phira 一致），透明线上的音符照常显示、照常判定。
+### 已对齐
 
-仍然不覆盖：
+- **note alpha 独立于线 alpha**（透明线上的音符照常显示、照常判定）；
+- **note 位置公式**：`line_pos + R(line_rot) · (positionX, -height)`，
+  不再错误地把 `positionX` 再减一次线坐标（发射器线/贴图线的位置现在正确）；
+- **线长**：按 `info.yml lineLength`（默认 6）画 `2 × lineLength` 世界单位，
+  即贯穿屏幕的超长线；
+- **note 尺寸**：按 prpr `NOTE_WIDTH_RATIO_BASE`（0.2635 世界单位全宽）绘制，
+  宽条 Tap / 细黄 Drag / 红 Flick / 白 Hold；
+- **默认皮肤色**：Tap `(75,160,229)`、Hold 近白、Drag `(228,196,66)`、Flick `(213,30,30)`；
+- **判定线默认色**：`color_perfect = 0xe1ffec9f`（暖白），并支持 `colorEvents`；
+- **`above=2` 不再反向**（Phira 的 RPE 解析里它不影响下落方向）；
+- **`alpha/size/pos/yControl` 改为按 note 行进距离求值**，用于距离雾/透视缩放/扇阵收放；
+- **`visibleTime`**：小于 999999 时按提前秒数淡入；
+- **10 个内置 shader**（grayscale / chromatic / glitch / vignette / circleBlur /
+  shockwave / radialBlur / pixel / noise / fisheye）有近似实现；
+- **贴图线 / GIF / 文字线 / 画笔线**；
+- **`videos`**：用 `ffmpeg` 按时间抽帧合成，支持 `cropCenter/inside/fit` 与 `attach`（近似）。
 
-- 自定义 note 皮肤、打击特效、Hold 材质；
-- 真实判定窗口与手感；
-- shader / 混合模式 / 后处理；
-- 音频同步（预览按静音时间轴）。
+### 仍是近似
 
-> 因此：**结构用预览，观感与手感用真机。**
+- 真实 shader 的逐像素公式、采样数、混合模式（只用 numpy/PIL 近似）；
+- 皮肤贴图、打击特效、Hold 中间材质；
+- 真实判定窗口、手感、音频同步；
+- 线/音符的排序细节（`isCover`、`draw_below`）与粒子。
+- `attach` 视频的透视变换（简化为"旋转后的全屏图"）。
+
+> 因此：**结构、构图、节奏、颜色层次用预览；皮肤、打击特效、手感、掉帧用真机。**
+> 预览器抓不出的问题，必须在交付说明里写清楚"请重点看这几段"。
+
+---
+
+## 7. 特效/媒体验收（新增）
+
+| 项目 | 怎么验 | 不合格 |
+|---|---|---|
+| shader 时间 | 联系表抽 shader 起止帧 | 切点不在乐句、闪频乱 |
+| shader 叠加 | 抽高潮帧 | 叠 3 个以上、画面糊 |
+| 无 shader 降级 | 临时删 effects 再渲染 | 画面无法读谱 |
+| 贴图线 | 看尺寸/层级/遮挡 | 图过大、盖住 note |
+| 文字线 | 看字号/停留时间 | 字太小、半天不消失 |
+| 视频 | 看弱谱区是否被抢 | 爆发段还开视频 |
+| attach 视频 | 看是否跟线旋转 | 视频飞出屏幕、比例失真 |
+
+> 最后仍建议由主人在有 GPU 的设备上导入 zip 看一遍；
+> 附上 2–3 个时间点（如 `0:13 / 1:56 / 3:26`）比"整体感觉"有效得多。

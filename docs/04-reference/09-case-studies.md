@@ -232,4 +232,12 @@ x：  ±225  ±450      -225/0/300/450
 > 第三份案例《时落之雨》专注"note 与判定线怎么拟物、走轨迹、做 3D"：
 > [`10-case-shiluozhiyu.md`](10-case-shiluozhiyu.md)（雨滴 / 雨柱 / 扇阵 / 线框 / 速度视差）。
 > 系统方法见 [`11-note-and-line-choreography.md`](11-note-and-line-choreography.md)。
+>
+> 第四份案例《深圳东》专注"颜色、节奏交互、线框空间与留白"：
+> [`12-case-shenzhendong.md`](12-case-shenzhendong.md)
+> （灰阶—色差对切 / 双线对打 / 镜像对打 / 四线收束 / 共点星芒 / 两态结构 / 逐帧视觉观察）。
+> 外部图片、视频与 shader 的接入方法见 [`13-media-layers.md`](13-media-layers.md)。
+>
+> **研究顺序永远是：先看画面（联系表）→ 再看结构（JSON）→ 最后对指标。**
+> 只看代码会漏掉颜色、遮挡、留白的呼吸和 shader 的情绪。
 

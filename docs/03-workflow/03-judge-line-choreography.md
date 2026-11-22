@@ -201,7 +201,10 @@ for i in range(6):
 
 ## 7. 透明度（alphaEvents）
 
-- `end` 为**负数** → 隐藏该线及其所有 note（做"消失/出现"）
+- `end` 为**负数** → 隐藏这条线；**但线上 note 仍然显示、仍然判定**（幽灵 note 陷阱）
+- Phira 的 RPE 解析里 `pe_alpha_extension=false`，负 alpha 会被 `max(0)`，
+  **不能用 Phigros 的负 alpha 扩展**做"隐藏线 / 提前显示"
+- 要彻底隐藏线，优先 `moveX=114514` / `moveY=±1000`，而不是 alpha=0
 - 表演线常驻 `alpha` 100~200，避免抢视线
 - 淡入淡出至少 0.5 拍，否则像闪烁
 - UI 线的 alpha 控制要谨慎（别把连击数弄没了）
@@ -238,7 +241,7 @@ for i in range(6):
 | 缩放 | `extended.scaleX/YEvents` | 非等比 → 呼吸、拍扁、拉伸 |
 | 位移 | `moveX/moveYEvents` | 常把道具停在 `x=±1800`（画外），需要时扫进来 |
 | 旋转 | `rotateEvents` | 道具自转、整个舞台失衡 |
-| 染色 | `extended.colorEvents` | **白图 + 染色**，一张图顶十种配色 |
+| 染色 | `extended.colorEvents` | 只对普通线 / 文字线 / attach 视频生效；**贴图线不吃色**（白图预调色） |
 | 倾斜 | `extended.inclineEvents` | 透视、速度感 |
 | 进出场 | `alphaEvents` | 0→255→0 三段式，别忘记退场 |
 | 覆盖关系 | `isCover: 1` | 音符到达判定线即消失（常规手感）；`0` 才允许穿透 |
@@ -323,7 +326,7 @@ for i in range(6):
 
 ## 12. 视频层（`extra.json` 的 `videos`）
 
-除了判定线，还有一层**独立的全屏视频**，不占用任何线资源：
+除了判定线，还有一层**视频**，不占用任何线资源：
 
 ```json
 {
@@ -332,19 +335,18 @@ for i in range(6):
   "scale": "cropCenter",
   "alpha": 0.5,
   "dim": 0.3,
-  "startTime": [0, 0, 1],
-  "endTime": [18, 0, 1],
-  "colorFilter": [0.0, 0.0, 1.0, 1.0]
+  "attach": 12
 }
 ```
 
 | 字段 | 单位 | 说明 |
 |---|---|---|
-| `time` | 拍 | 视频出现的起始位置（`[386,0,1]` @117 BPM ≈ 197.9 s） |
-| `startTime`/`endTime` | 秒 | 视频内部的裁切窗口（实测与素材时长吻合） |
-| `scale` | — | `cropCenter` 裁切铺满、不拉伸 |
+| `time` | 拍 | 视频**开始播放**的谱面时间（不是裁切窗口） |
+| `scale` | — | `cropCenter` 铺满裁剪 / `inside` 完整放入 / `fit` 拉伸 |
 | `alpha` + `dim` | 0~1 | 半透明 + 压暗，**两者都要开** |
-| `colorFilter` | RGBA | 给视频统一调色，比重新剪片便宜 |
+| `attach` | 线号，可省 | 跟随该线位移/旋转/缩放，并用线色染色 |
+
+**没有 `startTime` / `endTime` / `colorFilter`**——视频从 `time` 播到文件结束，要短就剪素材。
 
 三条硬规则：
 
@@ -352,4 +354,7 @@ for i in range(6):
 2. 视频放在**弱谱区**，别和爆发段抢注意力
 3. 必须有**无视频降级**：客户端不支持时谱面仍完整
 
-详见 [《巴拉莱卡》案例](../04-reference/06-case-balalaika.md#4-视频层extrajson-的-videos)。
+完整字段、贴图线（精灵/GIF/文字/画笔）与 shader 见
+[图片·视频·Shader 手册](../04-reference/13-media-layers.md)，
+实例见 [《深圳东》](../04-reference/12-case-shenzhendong.md) 与
+[《巴拉莱卡》](../04-reference/06-case-balalaika.md#4-视频层extrajson-的-videos)。
