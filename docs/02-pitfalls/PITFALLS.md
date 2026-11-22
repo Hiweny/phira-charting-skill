@@ -197,6 +197,44 @@ Phira 同时接受：
 
 ---
 
+### P15 `invalid type: integer 56, expected tuple struct Triple at line 1 column 72816`
+
+**症状**：连导入都过不去，报错只给一个 column，压缩后的 JSON 根本看不出是哪。
+
+**病因**：某个 beat 字段被写成了**裸数字**。三个最常见来源：
+
+1. 手写 `extended` 事件（`colorEvents` / `textEvents` / `scaleXEvents`）时，
+   `endTime` 忘了包 `bt()`——例如 `{"startTime": bt(0), "endTime": 56}`；
+2. 把"点列表" `[(0, v), (56, v)]` 直接当事件用，只转了 `startTime`；
+3. `extra.json` 的 `effects[].start` / `end` 写成了秒数。
+
+**为什么库帮不了你**：`chart_builder` 的 `event()` 会 `bt()`，但 `colorEvents` 这种字段
+库里没有封装，手写 dict 时很容易漏。**库不是保险，校验器才是。**
+
+**修法**：
+
+```python
+# ❌ 只转了 startTime
+{"startTime": bt(b), "endTime": nb}          # nb = 56 → 报 Triple
+# ✅ 两个都转
+{"startTime": bt(b), "endTime": bt(nb)}
+```
+
+**定位**：直接跑
+
+```bash
+python3 tools/validate_chart.py <工程目录>
+```
+
+2026-11-23 起它会**递归扫描所有 `startTime` / `endTime` / `time`**，
+非 `[int,int,int]` 一律报 error，并打印精确路径：
+
+```
+[ERROR] beat 三元组非法：chart/judgeLineList[0]/extended/colorEvents[1]/endTime = 56
+```
+
+---
+
 ## 二、能导入但"没法玩"的问题
 
 | 症状 | 病因 | 修法 |
