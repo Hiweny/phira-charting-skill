@@ -30,7 +30,7 @@ description: 制作 / 修改 / 校验 Phira(RPE 格式) 谱面时使用。覆盖
 3. **你自己的审美判断**（只要你能说出理由）
 
 所以：允许超标、允许反套路、允许"手册没写过"的做法。
-**唯一不可协商的是格式硬规则（R1–R10）**——那是能不能导入的问题。
+**唯一不可协商的是格式硬规则（R1–R11）**——那是能不能导入的问题。
 
 ---
 
@@ -47,7 +47,8 @@ description: 制作 / 修改 / 校验 Phira(RPE 格式) 谱面时使用。覆盖
 | R7 | **`eventLayers` 的每一层必须同时包含 5 个事件数组**：`alphaEvents`、`moveXEvents`、`moveYEvents`、`rotateEvents`、`speedEvents`。 |
 | R8 | **`extra.json` 里 effect 的 `start` / `end` 也是 beat 三元组**。 |
 | R9 | **info.yml 的 `id`、`uploader` 是整数（可为 null）**；`difficulty` 是浮点；字符串含 `:` 必须加引号。 |
-| R10 | **改完必跑** `bash tools/selfcheck.sh <工程目录>`，通过才算完。 |
+| R10 | **所有 beat（含 `extended` 里手写的 `colorEvents`/`textEvents`）必须经 `bt()` 包装**。裸整数会报 `invalid type: integer N, expected tuple struct Triple`。 |
+| R11 | **改完必跑** `bash tools/selfcheck.sh <工程目录>`，通过才算完（`validate_chart.py` 已递归扫描所有 beat 字段）。 |
 
 完整踩坑表：[`docs/02-pitfalls/PITFALLS.md`](docs/02-pitfalls/PITFALLS.md)。
 
