@@ -169,6 +169,36 @@ demucs --two-stems=vocals song.mp3 -o stems/
 > 节奏决定"什么时候打"，歌词与情感决定"为什么这样打"。
 > 只做节奏，谱面是节拍器；做了歌词与情感，谱面才是叙事。
 
+### 5.0 先查文件本身：内嵌歌词与封面
+
+**很多歌根本不需要 ASR 或找图——歌词和曲绘就嵌在文件里。** 一条命令：
+
+```bash
+python3 tools/extract_tags.py song.mp3            # 打印元信息
+python3 tools/extract_tags.py song.mp3 -o out/    # 拆出 lyrics.lrc / lyrics.zh.txt / cover.jpg
+python3 tools/extract_tags.py song.mp3 --check    # 只问"真实容器是什么"
+```
+
+能挖到的东西：
+
+| 容器 | 歌词位置 | 封面位置 |
+|---|---|---|
+| FLAC | VORBIS_COMMENT 的 `LYRICS` / `UNSYNCEDLYRICS` | PICTURE(type 6) 块 |
+| MP3 | ID3v2 `USLT` / `TXXX:LYRICS` / `SYLT` | `APIC` 帧 |
+| M4A | `©lyr` | `covr` |
+
+三个高频意外：
+
+1. **扩展名撒谎**：`.mp3` 其实是 FLAC（`fLaC` 头）。Phira 只保证 mp3/ogg/wav → 必须转码。
+2. **双语歌词**：`[TLYRIC]` / `[翻译]` 之后往往跟着同时间轴的中文翻译，工具会自动拆成两份。
+   翻译是免费的叙事素材，但**只显示玩家看得懂的那一份**。
+3. **没有封面**：别假设"应该有"。没有就用 `--check` 确认不是被重封装丢了，再决定找图/做图。
+
+> 时间戳质量：嵌在文件里的 LRC 通常比网搜的准（跟着音频一起封装的），
+> 但**首次出场时间要人工核一遍**——有的 LRC 把前奏也算进第一句。
+
+---
+
 ### 5.1 歌词从哪来
 
 按可靠性排序：
