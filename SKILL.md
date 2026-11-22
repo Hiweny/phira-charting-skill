@@ -277,7 +277,7 @@ note 轨迹与 3D 的系统做法：[编排手册](docs/04-reference/11-note-and
 10 个内置后处理 / 自定义 GLSL / 素材尺寸与图层）：
 [`docs/04-reference/13-media-layers.md`](docs/04-reference/13-media-layers.md)
 
-**审美契约**（一条演奏线 / Lv12–13 / 几何美 / 3D 参与演奏 / 歌词时限 /
+**审美契约**（线数与分工 / Lv12–13 / 几何美 / 3D 参与演奏 / 歌词时限 /
 视觉与手感验收）：
 [`docs/03-workflow/06-art-contract.md`](docs/03-workflow/06-art-contract.md)
 
